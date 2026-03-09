@@ -24,6 +24,8 @@ Thumbs.db
 # Build artifacts
 dist/
 vendor/
+bin/
+jack
 
 # Debug
 *.prof

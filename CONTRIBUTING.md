@@ -1,6 +1,6 @@
-# Contributing to samoa
+# Contributing to jack
 
-Thank you for considering contributing to samoa.
+Thank you for considering contributing to jack.
 
 ## Development Setup
 

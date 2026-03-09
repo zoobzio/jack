@@ -1,11 +1,14 @@
-.PHONY: test test-unit test-integration test-bench lint lint-fix security coverage clean help check ci install-tools install-hooks
+.PHONY: build test test-unit test-integration test-bench lint lint-fix security coverage clean help check ci install-tools install-hooks
 
 .DEFAULT_GOAL := help
 
 help: ## Display available commands
-	@echo "samoa Development Commands"
+	@echo "jack Development Commands"
 	@echo "=============================="
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+
+build: ## Build the jack binary
+	@go build -o bin/jack ./cmd/jack
 
 test: ## Run all tests with race detector
 	@go test -v -race -tags testing ./...
@@ -36,6 +39,7 @@ coverage: ## Generate coverage report (HTML)
 
 clean: ## Remove generated files
 	@rm -f coverage.out coverage.html coverage.txt
+	@rm -rf bin/
 	@find . -name "*.test" -delete
 	@find . -name "*.prof" -delete
 	@find . -name "*.out" -delete
