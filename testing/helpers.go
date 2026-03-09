@@ -1,6 +1,6 @@
 //go:build testing
 
-// Package testing provides test helpers for samoa.
+// Package testing provides test helpers for jack.
 package testing
 
 import "testing"
