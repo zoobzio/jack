@@ -7,8 +7,6 @@ import (
 )
 
 func init() {
-	inviteCmd.Flags().StringP("user", "u", "", "username for token lookup (required)")
-	_ = inviteCmd.MarkFlagRequired("user")
 	Cmd.AddCommand(inviteCmd)
 }
 
@@ -16,9 +14,8 @@ var inviteCmd = &cobra.Command{
 	Use:   "invite <room-id> <user-id>",
 	Short: "Invite a user to a room",
 	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		username, _ := cmd.Flags().GetString("user")
-		token, err := LoadToken(username)
+	RunE: func(_ *cobra.Command, args []string) error {
+		token, err := TokenFromEnv()
 		if err != nil {
 			return err
 		}

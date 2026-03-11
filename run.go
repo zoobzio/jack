@@ -21,36 +21,33 @@ type SessionCreator func(name, dir, shellCmd string) error
 type KeyAdder func(key string) error
 
 func init() {
-	newCmd.Flags().StringP("team", "t", "", "team to use for the session (required)")
-	_ = newCmd.MarkFlagRequired("team")
-	rootCmd.AddCommand(newCmd)
+	runCmd.Flags().StringP("team", "t", "", "team to use for the session (required)")
+	_ = runCmd.MarkFlagRequired("team")
+	runCmd.Flags().Bool("detach", false, "create session in the background without attaching")
+	rootCmd.AddCommand(runCmd)
 }
 
-var newCmd = &cobra.Command{
-	Use:   "new",
-	Short: "Create a new session",
-	Long:  "Create a new tmux session running Claude Code inside a bubblewrap sandbox.\nUses the current directory name as the session name.",
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Run a session",
+	Long:  "Create a tmux session running Claude Code inside a bubblewrap sandbox.\nUses the current directory name as the session name.\nAttaches to the session by default; use --detach to run in the background.",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		team, _ := cmd.Flags().GetString("team")
+		detach, _ := cmd.Flags().GetBool("detach")
 		dir, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getting working directory: %w", err)
 		}
 		repo := filepath.Base(dir)
-		return runNew(repo, team, dir, HasSession, CreateSession, sshAdd)
+		return runRun(repo, team, dir, detach, HasSession, CreateSession, AttachSession, sshAdd, ageDecrypt)
 	},
 }
 
-func runNew(repo, teamName, dir string, hasSession SessionChecker, createSession SessionCreator, addKey KeyAdder) error {
-	team, ok := cfg.Teams[teamName]
+func runRun(repo, teamName, dir string, detach bool, hasSession SessionChecker, createSession SessionCreator, attach SessionAttacher, addKey KeyAdder, decrypt TokenDecrypter) error {
+	profile, ok := cfg.Profiles[teamName]
 	if !ok {
-		return fmt.Errorf("unknown team %q", teamName)
-	}
-
-	profile, ok := cfg.Profiles[team.Profile]
-	if !ok {
-		return fmt.Errorf("team %q references unknown profile %q", teamName, team.Profile)
+		return fmt.Errorf("unknown team %q (no matching profile)", teamName)
 	}
 
 	name := SessionName(teamName, repo)
@@ -66,13 +63,29 @@ func runNew(repo, teamName, dir string, hasSession SessionChecker, createSession
 		}
 	}
 
-	shellCmd := buildShellCmd(profile, dir)
+	// Decrypt session token if present.
+	var token string
+	agePath := tokenAgePath(dir)
+	if _, err := os.Stat(agePath); err == nil {
+		privKeyPath := expandHome(profile.SSH.Key)
+		t, err := decrypt(privKeyPath, agePath)
+		if err != nil {
+			return fmt.Errorf("decrypting token: %w", err)
+		}
+		token = t
+	}
+
+	shellCmd := buildShellCmd(profile, dir, token)
 	if err := createSession(name, dir, shellCmd); err != nil {
 		return err
 	}
 
-	fmt.Printf("created session %s\n", name)
-	return nil
+	if detach {
+		fmt.Printf("created session %s\n", name)
+		return nil
+	}
+
+	return attach(name)
 }
 
 func sshAdd(key string) error {
@@ -82,7 +95,7 @@ func sshAdd(key string) error {
 	return cmd.Run()
 }
 
-func buildShellCmd(profile Profile, dir string) string {
+func buildShellCmd(profile Profile, dir, token string) string {
 	home, _ := os.UserHomeDir()
 	sock := os.Getenv("SSH_AUTH_SOCK")
 
@@ -110,6 +123,9 @@ func buildShellCmd(profile Profile, dir string) string {
 	}
 	if sock != "" {
 		bwrap = append(bwrap, fmt.Sprintf("--setenv SSH_AUTH_SOCK %s", sock))
+	}
+	if token != "" {
+		bwrap = append(bwrap, fmt.Sprintf("--setenv JACK_MSG_TOKEN %s", token))
 	}
 	bwrap = append(bwrap, "-- claude --dangerously-skip-permissions")
 

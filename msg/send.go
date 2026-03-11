@@ -8,8 +8,6 @@ import (
 )
 
 func init() {
-	sendCmd.Flags().StringP("user", "u", "", "username for token lookup (required)")
-	_ = sendCmd.MarkFlagRequired("user")
 	Cmd.AddCommand(sendCmd)
 }
 
@@ -17,9 +15,8 @@ var sendCmd = &cobra.Command{
 	Use:   "send <room-id> <message...>",
 	Short: "Send a message to a room",
 	Args:  cobra.MinimumNArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		username, _ := cmd.Flags().GetString("user")
-		token, err := LoadToken(username)
+	RunE: func(_ *cobra.Command, args []string) error {
+		token, err := TokenFromEnv()
 		if err != nil {
 			return err
 		}

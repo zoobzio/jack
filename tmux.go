@@ -35,9 +35,9 @@ func SessionName(team, repo string) string {
 
 // ParseSessionName extracts team and repo from a session name.
 // Matches against known team names using longest-match to handle prefix overlap.
-func ParseSessionName(name string, teams map[string]Team) (team, repo string, ok bool) {
+func ParseSessionName(name string, teams []string) (team, repo string, ok bool) {
 	var match string
-	for t := range teams {
+	for _, t := range teams {
 		prefix := t + "-"
 		if strings.HasPrefix(name, prefix) && len(t) > len(match) {
 			match = t
