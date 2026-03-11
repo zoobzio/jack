@@ -14,10 +14,7 @@ func TestSessionName(t *testing.T) {
 }
 
 func TestParseSessionName(t *testing.T) {
-	teams := map[string]Team{
-		"blue": {Profile: "rockhopper"},
-		"red":  {Profile: "mother"},
-	}
+	teams := []string{"blue", "red"}
 
 	tests := []struct {
 		name     string
@@ -45,10 +42,7 @@ func TestParseSessionName(t *testing.T) {
 }
 
 func TestParseSessionNameLongestMatch(t *testing.T) {
-	teams := map[string]Team{
-		"red":      {Profile: "mother"},
-		"redshift": {Profile: "mother"},
-	}
+	teams := []string{"red", "redshift"}
 
 	team, repo, ok := ParseSessionName("redshift-flux", teams)
 	jtesting.AssertEqual(t, ok, true)

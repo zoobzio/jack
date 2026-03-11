@@ -12,22 +12,19 @@ func init() {
 
 var registerCmd = &cobra.Command{
 	Use:   "register <username> <password>",
-	Short: "Register a Matrix user",
+	Short: "Register a Matrix user and print access token",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
 		client := NewClient(Homeserver, "")
-		return runRegister(args[0], args[1], RegistrationToken, client.Register, SaveToken)
+		return runRegister(args[0], args[1], RegistrationToken, client.Register)
 	},
 }
 
-func runRegister(username, password, regToken string, register Registerer, save TokenSaver) error {
+func runRegister(username, password, regToken string, register Registerer) error {
 	reg, err := register(username, password, regToken)
 	if err != nil {
 		return err
 	}
-	if err := save(username, reg.AccessToken); err != nil {
-		return fmt.Errorf("saving token: %w", err)
-	}
-	fmt.Printf("registered %s\n", reg.UserID)
+	fmt.Printf("%s %s\n", reg.UserID, reg.AccessToken)
 	return nil
 }
