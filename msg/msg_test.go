@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
 	jtesting "github.com/zoobzio/jack/testing"
@@ -58,7 +56,7 @@ func TestClientCreateRoom(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, "tok_abc")
-	room, err := client.CreateRoom("general")
+	room, err := client.CreateRoom("general", "dev discussion")
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, room.RoomID, "!room123:localhost")
 }
@@ -118,25 +116,15 @@ func TestClientErrorResponse(t *testing.T) {
 	jtesting.AssertError(t, err)
 }
 
-func TestSaveLoadToken(t *testing.T) {
-	dir := t.TempDir()
-	DataDir = dir
-
-	err := SaveToken("agent", "tok_xyz")
+func TestTokenFromEnv(t *testing.T) {
+	t.Setenv("JACK_MSG_TOKEN", "tok_env")
+	token, err := TokenFromEnv()
 	jtesting.AssertNoError(t, err)
-
-	token, err := LoadToken("agent")
-	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, token, "tok_xyz")
-
-	// Verify permissions.
-	info, err := os.Stat(filepath.Join(dir, "matrix", "tokens", "agent"))
-	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, info.Mode().Perm(), os.FileMode(0o600))
+	jtesting.AssertEqual(t, token, "tok_env")
 }
 
-func TestLoadTokenNotFound(t *testing.T) {
-	DataDir = t.TempDir()
-	_, err := LoadToken("nobody")
+func TestTokenFromEnvMissing(t *testing.T) {
+	t.Setenv("JACK_MSG_TOKEN", "")
+	_, err := TokenFromEnv()
 	jtesting.AssertError(t, err)
 }

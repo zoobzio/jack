@@ -3,6 +3,8 @@ package jack
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/zoobzio/flux"
@@ -12,8 +14,6 @@ import (
 // Config represents the top-level YAML configuration.
 type Config struct {
 	Profiles map[string]Profile `yaml:"profiles"`
-	Roles    map[string]Role    `yaml:"roles"`
-	Teams    map[string]Team    `yaml:"teams"`
 	Matrix   MatrixConfig       `yaml:"matrix"`
 }
 
@@ -46,35 +46,51 @@ type SSHConfig struct {
 	Key string `yaml:"key"`
 }
 
-// Role bundles a set of skills that can be assigned to a team at clone time.
-type Role struct {
-	Skills []string `yaml:"skills"`
-}
-
-// Team defines a named team with its profile, agents, and includes.
-type Team struct {
-	Profile string   `yaml:"profile"`
-	Agents  []string `yaml:"agents"`
-	Include []string `yaml:"include"`
-}
-
 // Validate checks the Config for internal consistency.
 func (c Config) Validate() error {
 	if len(c.Profiles) == 0 {
 		return fmt.Errorf("at least one profile must be defined")
 	}
-	if len(c.Teams) == 0 {
-		return fmt.Errorf("at least one team must be defined")
-	}
-	for name, team := range c.Teams {
+	for name := range c.Profiles {
 		if strings.Contains(name, "-") {
-			return fmt.Errorf("team name %q must not contain hyphens", name)
-		}
-		if _, ok := c.Profiles[team.Profile]; !ok {
-			return fmt.Errorf("team %q references unknown profile %q", name, team.Profile)
+			return fmt.Errorf("profile name %q must not contain hyphens", name)
 		}
 	}
 	return nil
+}
+
+// discoverTeams returns team names by reading subdirectories of teams/ in the
+// config area. Results are sorted by name (os.ReadDir order).
+func discoverTeams() []string {
+	teamsDir := filepath.Join(env.configDir(), "teams")
+	entries, err := os.ReadDir(teamsDir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	return names
+}
+
+// discoverTeamSkills returns skill names for a team by reading entries from
+// the teams/{name}/skills/ directory. Entries may be directories or symlinks.
+func discoverTeamSkills(teamName string) ([]string, error) {
+	skillsDir := filepath.Join(env.configDir(), "teams", teamName, "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		return nil, fmt.Errorf("team skills directory for %q: %w", teamName, err)
+	}
+	var skills []string
+	for _, e := range entries {
+		if e.IsDir() || e.Type()&os.ModeSymlink != 0 {
+			skills = append(skills, e.Name())
+		}
+	}
+	return skills, nil
 }
 
 var capacitor *flux.Capacitor[Config]

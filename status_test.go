@@ -4,6 +4,8 @@ package jack
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,14 +16,15 @@ import (
 func TestRunStatusNoSessions(t *testing.T) {
 	cfg = Config{
 		Profiles: map[string]Profile{
-			"rockhopper": {},
-			"mother":     {},
-		},
-		Teams: map[string]Team{
-			"blue": {Profile: "rockhopper"},
-			"red":  {Profile: "mother"},
+			"blue": {},
+			"red":  {},
 		},
 	}
+
+	configDir := t.TempDir()
+	env = Env{ConfigDir: configDir, DataDir: t.TempDir()}
+	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue"), 0o750)
+	_ = os.MkdirAll(filepath.Join(configDir, "teams", "red"), 0o750)
 
 	var buf bytes.Buffer
 	err := runStatus(&buf, func() ([]TmuxSession, error) {
@@ -35,21 +38,20 @@ func TestRunStatusNoSessions(t *testing.T) {
 	jtesting.AssertEqual(t, len(lines), 3)
 	jtesting.AssertEqual(t, strings.Contains(output, "blue"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "red"), true)
-	jtesting.AssertEqual(t, strings.Contains(output, "rockhopper"), true)
-	jtesting.AssertEqual(t, strings.Contains(output, "mother"), true)
 }
 
 func TestRunStatusWithSessions(t *testing.T) {
 	cfg = Config{
 		Profiles: map[string]Profile{
-			"rockhopper": {},
-			"mother":     {},
-		},
-		Teams: map[string]Team{
-			"blue": {Profile: "rockhopper"},
-			"red":  {Profile: "mother"},
+			"blue": {},
+			"red":  {},
 		},
 	}
+
+	configDir := t.TempDir()
+	env = Env{ConfigDir: configDir, DataDir: t.TempDir()}
+	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue"), 0o750)
+	_ = os.MkdirAll(filepath.Join(configDir, "teams", "red"), 0o750)
 
 	var buf bytes.Buffer
 	err := runStatus(&buf, func() ([]TmuxSession, error) {
@@ -91,7 +93,6 @@ func TestRunStatusWithSessions(t *testing.T) {
 	jtesting.AssertEqual(t, strings.Contains(output, "active"), true)
 	// Red has no sessions, still listed.
 	jtesting.AssertEqual(t, strings.Contains(output, "red"), true)
-	jtesting.AssertEqual(t, strings.Contains(output, "mother"), true)
 	// Non-jack session filtered out.
 	jtesting.AssertEqual(t, strings.Contains(output, "personal"), false)
 }

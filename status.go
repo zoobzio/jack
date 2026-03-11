@@ -33,9 +33,11 @@ func runStatus(w io.Writer, list Lister) error {
 		return fmt.Errorf("listing tmux sessions: %w", err)
 	}
 
+	teams := discoverTeams()
+
 	active := make(map[string][]SessionInfo)
 	for _, s := range sessions {
-		team, repo, ok := ParseSessionName(s.Name, cfg.Teams)
+		team, repo, ok := ParseSessionName(s.Name, teams)
 		if !ok {
 			continue
 		}
@@ -49,11 +51,10 @@ func runStatus(w io.Writer, list Lister) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "TEAM\tPROFILE\tSESSION\tDIRECTORY\tSTATUS")
 
-	for _, team := range sortedKeys(cfg.Teams) {
-		profile := cfg.Teams[team].Profile
+	for _, team := range teams {
 		infos := active[team]
 		if len(infos) == 0 {
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\n", team, profile)
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\n", team, team)
 			continue
 		}
 		sort.Slice(infos, func(i, j int) bool {
@@ -62,7 +63,7 @@ func runStatus(w io.Writer, list Lister) error {
 		for _, info := range infos {
 			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 				team,
-				profile,
+				team,
 				info.Name,
 				info.Path,
 				sessionStatus(info),
@@ -95,11 +96,3 @@ func formatDuration(d time.Duration) string {
 	}
 }
 
-func sortedKeys[K ~string, V any](m map[K]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, string(k))
-	}
-	sort.Strings(keys)
-	return keys
-}

@@ -24,7 +24,6 @@ var rootCmd = &cobra.Command{
 		}
 		msg.Homeserver = cfg.Matrix.Homeserver
 		msg.RegistrationToken = cfg.Matrix.RegistrationToken
-		msg.DataDir = env.dataDir()
 		return nil
 	},
 }

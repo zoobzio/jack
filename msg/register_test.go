@@ -9,15 +9,7 @@ import (
 	jtesting "github.com/zoobzio/jack/testing"
 )
 
-func noopSaver(_, _ string) error { return nil }
-
 func TestRunRegisterSuccess(t *testing.T) {
-	var savedUser, savedToken string
-	saver := func(user, token string) error {
-		savedUser = user
-		savedToken = token
-		return nil
-	}
 	registerer := func(user, pass, token string) (*Registration, error) {
 		return &Registration{
 			UserID:      "@" + user + ":localhost",
@@ -25,16 +17,14 @@ func TestRunRegisterSuccess(t *testing.T) {
 		}, nil
 	}
 
-	err := runRegister("agent", "pass", "jack", registerer, saver)
+	err := runRegister("agent", "pass", "jack", registerer)
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, savedUser, "agent")
-	jtesting.AssertEqual(t, savedToken, "tok_abc")
 }
 
 func TestRunRegisterError(t *testing.T) {
 	registerer := func(_, _, _ string) (*Registration, error) {
 		return nil, fmt.Errorf("registration failed")
 	}
-	err := runRegister("agent", "pass", "jack", registerer, noopSaver)
+	err := runRegister("agent", "pass", "jack", registerer)
 	jtesting.AssertError(t, err)
 }

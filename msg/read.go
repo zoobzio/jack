@@ -7,8 +7,6 @@ import (
 )
 
 func init() {
-	readCmd.Flags().StringP("user", "u", "", "username for token lookup (required)")
-	_ = readCmd.MarkFlagRequired("user")
 	readCmd.Flags().IntP("limit", "n", 20, "number of messages to retrieve")
 	Cmd.AddCommand(readCmd)
 }
@@ -18,9 +16,8 @@ var readCmd = &cobra.Command{
 	Short: "Read messages from a room",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		username, _ := cmd.Flags().GetString("user")
 		limit, _ := cmd.Flags().GetInt("limit")
-		token, err := LoadToken(username)
+		token, err := TokenFromEnv()
 		if err != nil {
 			return err
 		}

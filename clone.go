@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/zoobzio/jack/msg"
 )
 
 // Cloner clones a git repository into a directory.
@@ -17,36 +18,38 @@ type Cloner func(url, dir string) error
 func init() {
 	cloneCmd.Flags().StringSliceP("team", "t", nil, "teams to clone for (required, repeatable)")
 	_ = cloneCmd.MarkFlagRequired("team")
-	cloneCmd.Flags().StringP("role", "r", "", "role to apply (required)")
-	_ = cloneCmd.MarkFlagRequired("role")
 	rootCmd.AddCommand(cloneCmd)
 }
 
 var cloneCmd = &cobra.Command{
 	Use:   "clone <url>",
 	Short: "Clone a repo for a team",
-	Long:  "Clone a git repo into each team's isolated workspace, apply a role, and create sessions.",
+	Long:  "Clone a git repo into each team's isolated workspace, apply team skills, and create sessions.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teams, _ := cmd.Flags().GetStringSlice("team")
-		role, _ := cmd.Flags().GetString("role")
-		return runClone(args[0], teams, role, gitClone, copyFile, HasSession, CreateSession, sshAdd)
+		client := msg.NewClient(msg.Homeserver, "")
+		return runClone(args[0], teams, gitClone, copyFile, HasSession, CreateSession, sshAdd, client.Register, ageEncrypt, writeDescription, ageDecrypt)
 	},
 }
 
-func runClone(url string, teams []string, roleName string, clone Cloner, cp FileCopier, hasSession SessionChecker, createSession SessionCreator, addKey KeyAdder) error {
+func runClone(url string, teams []string, clone Cloner, cp FileCopier, hasSession SessionChecker, createSession SessionCreator, addKey KeyAdder, register msg.Registerer, encrypt TokenEncrypter, writeDesc DescriptionWriter, decrypt TokenDecrypter) error {
 	repo := repoName(url)
 	if repo == "" {
 		return fmt.Errorf("cannot extract repo name from %q", url)
 	}
 
-	if _, ok := cfg.Roles[roleName]; !ok {
-		return fmt.Errorf("unknown role %q", roleName)
-	}
+	configDir := env.configDir()
 
 	for _, teamName := range teams {
-		if _, ok := cfg.Teams[teamName]; !ok {
-			return fmt.Errorf("unknown team %q", teamName)
+		// Validate governance prerequisites per team.
+		if err := validateGovernance(configDir, teamName, repo); err != nil {
+			return err
+		}
+
+		profile, ok := cfg.Profiles[teamName]
+		if !ok {
+			return fmt.Errorf("unknown team %q (no matching profile)", teamName)
 		}
 
 		dir := filepath.Join(env.dataDir(), teamName, repo)
@@ -59,11 +62,30 @@ func runClone(url string, teams []string, roleName string, clone Cloner, cp File
 			return fmt.Errorf("cloning %s for team %s: %w", repo, teamName, err)
 		}
 
-		if err := applyRole(roleName, teamName, dir, cp); err != nil {
-			return fmt.Errorf("applying role %s for team %s: %w", roleName, teamName, err)
+		if err := applyTeam(teamName, repo, dir, cp); err != nil {
+			return fmt.Errorf("applying team %s: %w", teamName, err)
 		}
 
-		if err := runNew(repo, teamName, dir, hasSession, createSession, addKey); err != nil {
+		// Register Matrix user for this session.
+		username := teamName + "-" + repo
+		reg, err := register(username, username, cfg.Matrix.RegistrationToken)
+		if err != nil {
+			return fmt.Errorf("registering Matrix user %s: %w", username, err)
+		}
+
+		// Encrypt and store the token.
+		pubKeyPath := expandHome(profile.SSH.Key) + ".pub"
+		if err := encrypt(reg.AccessToken, pubKeyPath, tokenAgePath(dir)); err != nil {
+			return fmt.Errorf("encrypting token for %s: %w", username, err)
+		}
+
+		// Write session description.
+		desc := fmt.Sprintf("team=%s repo=%s", teamName, repo)
+		if err := writeDesc(descriptionPath(dir), desc); err != nil {
+			return fmt.Errorf("writing description for %s: %w", username, err)
+		}
+
+		if err := runRun(repo, teamName, dir, true, hasSession, createSession, nil, addKey, decrypt); err != nil {
 			return fmt.Errorf("creating session for team %s: %w", teamName, err)
 		}
 	}

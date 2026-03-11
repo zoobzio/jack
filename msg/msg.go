@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 var (
 	Homeserver        string
 	RegistrationToken string
-	DataDir           string
 )
 
 // Cmd is the parent command for all messaging subcommands.
@@ -66,6 +64,18 @@ type JoinedRooms struct {
 	Rooms []string `json:"joined_rooms"`
 }
 
+// RoomInfo holds a room's name and topic.
+type RoomInfo struct {
+	Name  string `json:"name"`
+	Topic string `json:"topic"`
+}
+
+// Member represents a room member with their display name.
+type Member struct {
+	UserID      string `json:"user_id"`
+	DisplayName string `json:"display_name"`
+}
+
 // Message represents a single Matrix timeline event.
 type Message struct {
 	Sender  string                 `json:"sender"`
@@ -89,7 +99,7 @@ type Registerer func(username, password, token string) (*Registration, error)
 type Authenticator func(username, password string) (*Registration, error)
 
 // RoomCreator creates a Matrix room.
-type RoomCreator func(name string) (*Room, error)
+type RoomCreator func(name, topic string) (*Room, error)
 
 // Inviter invites a user to a Matrix room.
 type Inviter func(roomID, userID string) error
@@ -103,11 +113,12 @@ type MessageReader func(roomID string, limit int) (*Messages, error)
 // RoomLister lists joined Matrix rooms.
 type RoomLister func() (*JoinedRooms, error)
 
-// TokenSaver persists a Matrix access token.
-type TokenSaver func(username, token string) error
+// RoomInfoGetter retrieves room name and topic.
+type RoomInfoGetter func(roomID string) (*RoomInfo, error)
 
-// TokenLoader loads a Matrix access token.
-type TokenLoader func(username string) (string, error)
+// MemberLister lists the members of a room.
+type MemberLister func(roomID string) ([]Member, error)
+
 
 // --- Client methods ---
 
@@ -142,11 +153,14 @@ func (c *Client) Login(username, password string) (*Registration, error) {
 	return &reg, nil
 }
 
-// CreateRoom creates a new Matrix room.
-func (c *Client) CreateRoom(name string) (*Room, error) {
+// CreateRoom creates a new Matrix room with an optional topic.
+func (c *Client) CreateRoom(name, topic string) (*Room, error) {
 	body := map[string]interface{}{
 		"name":   name,
 		"preset": "private_chat",
+	}
+	if topic != "" {
+		body["topic"] = topic
 	}
 	var room Room
 	if err := c.post("/_matrix/client/v3/createRoom", body, &room); err != nil {
@@ -200,6 +214,53 @@ func (c *Client) JoinedRooms() (*JoinedRooms, error) {
 		return nil, fmt.Errorf("joined rooms: %w", err)
 	}
 	return &rooms, nil
+}
+
+// GetRoomInfo retrieves the name and topic for a room.
+func (c *Client) GetRoomInfo(roomID string) (*RoomInfo, error) {
+	var info RoomInfo
+
+	// Fetch room name (ignore errors — name may not be set).
+	var nameEvent struct {
+		Name string `json:"name"`
+	}
+	namePath := fmt.Sprintf("/_matrix/client/v3/rooms/%s/state/m.room.name", url.PathEscape(roomID))
+	if err := c.get(namePath, &nameEvent); err == nil {
+		info.Name = nameEvent.Name
+	}
+
+	// Fetch room topic (ignore errors — topic may not be set).
+	var topicEvent struct {
+		Topic string `json:"topic"`
+	}
+	topicPath := fmt.Sprintf("/_matrix/client/v3/rooms/%s/state/m.room.topic", url.PathEscape(roomID))
+	if err := c.get(topicPath, &topicEvent); err == nil {
+		info.Topic = topicEvent.Topic
+	}
+
+	return &info, nil
+}
+
+// Members returns the joined members of a room with display names.
+func (c *Client) Members(roomID string) ([]Member, error) {
+	var resp struct {
+		Joined map[string]struct {
+			DisplayName string `json:"display_name"`
+		} `json:"joined"`
+	}
+	path := fmt.Sprintf("/_matrix/client/v3/rooms/%s/joined_members", url.PathEscape(roomID))
+	if err := c.get(path, &resp); err != nil {
+		return nil, fmt.Errorf("members: %w", err)
+	}
+
+	members := make([]Member, 0, len(resp.Joined))
+	for userID, info := range resp.Joined {
+		members = append(members, Member{
+			UserID:      userID,
+			DisplayName: info.DisplayName,
+		})
+	}
+	return members, nil
 }
 
 // --- HTTP helpers ---
@@ -267,23 +328,11 @@ func (c *Client) do(method, path string, body interface{}, result interface{}) e
 	return nil
 }
 
-// --- Token storage ---
-
-// SaveToken persists an access token for a username.
-func SaveToken(username, token string) error {
-	dir := filepath.Join(DataDir, "matrix", "tokens")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("creating token dir: %w", err)
+// TokenFromEnv reads the session-scoped Matrix access token from the environment.
+func TokenFromEnv() (string, error) {
+	token := os.Getenv("JACK_MSG_TOKEN")
+	if token == "" {
+		return "", fmt.Errorf("JACK_MSG_TOKEN not set (session not configured for messaging)")
 	}
-	return os.WriteFile(filepath.Join(dir, username), []byte(token), 0o600)
-}
-
-// LoadToken reads a stored access token for a username.
-func LoadToken(username string) (string, error) {
-	path := filepath.Join(DataDir, "matrix", "tokens", username)
-	data, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		return "", fmt.Errorf("no stored token for %q (run 'jack msg login' first): %w", username, err)
-	}
-	return strings.TrimSpace(string(data)), nil
+	return token, nil
 }
