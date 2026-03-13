@@ -127,7 +127,7 @@ func TestRunRunDecryptsToken(t *testing.T) {
 
 	err := runRun("testrepo", "blue", dir, true, noopChecker, creator, noopAttacher, noopAdder, decrypter)
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(capturedCmd, "JACK_MSG_TOKEN tok_decrypted"), true)
+	jtesting.AssertEqual(t, strings.Contains(capturedCmd, "export JACK_MSG_TOKEN=tok_decrypted"), true)
 }
 
 func TestBuildShellCmd(t *testing.T) {
@@ -139,12 +139,13 @@ func TestBuildShellCmd(t *testing.T) {
 
 	jtesting.AssertEqual(t, strings.Contains(cmd, `git config user.name "Test User"`), true)
 	jtesting.AssertEqual(t, strings.Contains(cmd, `git config user.email "test@example.com"`), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "--ro-bind / /"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "--bind /home/user/project /home/user/project"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "--dev /dev"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "--proc /proc"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "--tmpfs /tmp"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "-- claude --dangerously-skip-permissions"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "unshare --mount --user --map-root-user --pid --fork"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "mount --bind /home/user/project $root/home/project"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "pivot_root $root $root/tmp"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "umount -l /tmp"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "export HOME=/home"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "cd /home/project"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "exec claude --dangerously-skip-permissions"), true)
 	jtesting.AssertEqual(t, strings.Contains(cmd, " && "), true)
 }
 
@@ -154,7 +155,7 @@ func TestBuildShellCmdNoGitConfig(t *testing.T) {
 	cmd := buildShellCmd(profile, "/tmp", "")
 
 	jtesting.AssertEqual(t, strings.Contains(cmd, "git config"), false)
-	jtesting.AssertEqual(t, strings.HasPrefix(cmd, "exec bwrap"), true)
+	jtesting.AssertEqual(t, strings.HasPrefix(cmd, "exec unshare"), true)
 }
 
 func TestBuildShellCmdWithToken(t *testing.T) {
@@ -163,5 +164,5 @@ func TestBuildShellCmdWithToken(t *testing.T) {
 	}
 
 	cmd := buildShellCmd(profile, "/home/user/project", "tok_session")
-	jtesting.AssertEqual(t, strings.Contains(cmd, "--setenv JACK_MSG_TOKEN tok_session"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "export JACK_MSG_TOKEN=tok_session"), true)
 }

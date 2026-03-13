@@ -30,7 +30,7 @@ func init() {
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run a session",
-	Long:  "Create a tmux session running Claude Code inside a bubblewrap sandbox.\nUses the current directory name as the session name.\nAttaches to the session by default; use --detach to run in the background.",
+	Long:  "Create a tmux session running Claude Code inside a namespace sandbox.\nUses the current directory name as the session name.\nAttaches to the session by default; use --detach to run in the background.",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		team, _ := cmd.Flags().GetString("team")
@@ -96,12 +96,11 @@ func sshAdd(key string) error {
 }
 
 func buildShellCmd(profile Profile, dir, token string) string {
-	home, _ := os.UserHomeDir()
 	sock := os.Getenv("SSH_AUTH_SOCK")
 
 	var parts []string
 
-	// Set git identity.
+	// Set git identity before entering sandbox.
 	if profile.Git.Name != "" {
 		parts = append(parts, fmt.Sprintf("git config user.name %q", profile.Git.Name))
 	}
@@ -109,26 +108,62 @@ func buildShellCmd(profile Profile, dir, token string) string {
 		parts = append(parts, fmt.Sprintf("git config user.email %q", profile.Git.Email))
 	}
 
-	// Build bwrap command.
-	bwrap := []string{
-		"exec bwrap",
-		"--ro-bind / /",
-		"--dev /dev",
-		"--proc /proc",
-		"--tmpfs /tmp",
-		fmt.Sprintf("--bind %s %s", dir, dir),
-		"--ro-bind-try ~/.claude ~/.claude",
-		"--ro-bind-try ~/.config/claude ~/.config/claude",
-		fmt.Sprintf("--setenv HOME %s", home),
+	// Build sandbox script using Linux namespaces.
+	s := make([]string, 0, 20)
+	s = append(s, "set -e")
+
+	// Create isolated root on tmpfs.
+	s = append(s, "root=$(mktemp -d)", "mount -t tmpfs tmpfs $root")
+
+	// Read-only system directories.
+	for _, d := range []string{"usr", "lib", "lib64", "bin", "sbin", "etc"} {
+		s = append(s, fmt.Sprintf(
+			"[ -d /%s ] && mkdir -p $root/%s && mount --bind /%s $root/%s && mount -o remount,ro,bind $root/%s",
+			d, d, d, d, d,
+		))
 	}
+
+	// Virtual filesystems.
+	s = append(s,
+		"mkdir -p $root/dev $root/proc $root/tmp",
+		"mount --rbind /dev $root/dev",
+		"mount -t proc proc $root/proc",
+		"mount -t tmpfs tmpfs $root/tmp",
+	)
+
+	// Home directory with project as the sole user content.
+	s = append(s, "mkdir -p $root/home/project")
+	s = append(s, fmt.Sprintf("mount --bind %s $root/home/project", dir))
+
+	// SSH auth socket.
 	if sock != "" {
-		bwrap = append(bwrap, fmt.Sprintf("--setenv SSH_AUTH_SOCK %s", sock))
+		sockDir := filepath.Dir(sock)
+		s = append(s,
+			fmt.Sprintf("mkdir -p $root%s", sockDir),
+			fmt.Sprintf("mount --bind %s $root%s", sockDir, sockDir),
+		)
+	}
+
+	// Pivot root: new root becomes /, old root lands at /tmp then gets replaced.
+	s = append(s,
+		"pivot_root $root $root/tmp",
+		"umount -l /tmp",
+		"mount -t tmpfs tmpfs /tmp",
+	)
+
+	// Set environment and exec.
+	s = append(s, "cd /home/project", "export HOME=/home")
+	if sock != "" {
+		s = append(s, fmt.Sprintf("export SSH_AUTH_SOCK=%s", sock))
 	}
 	if token != "" {
-		bwrap = append(bwrap, fmt.Sprintf("--setenv JACK_MSG_TOKEN %s", token))
+		s = append(s, fmt.Sprintf("export JACK_MSG_TOKEN=%s", token))
 	}
-	bwrap = append(bwrap, "-- claude --dangerously-skip-permissions")
+	s = append(s, "exec claude --dangerously-skip-permissions")
 
-	parts = append(parts, strings.Join(bwrap, " "))
+	script := strings.Join(s, "; ")
+	sandbox := fmt.Sprintf("exec unshare --mount --user --map-root-user --pid --fork sh -c '%s'", script)
+
+	parts = append(parts, sandbox)
 	return strings.Join(parts, " && ")
 }
