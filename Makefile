@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration test-bench lint lint-fix security coverage clean help check ci install-tools install-hooks
+.PHONY: build install test test-unit test-integration test-bench lint lint-fix security coverage clean help check ci install-tools install-hooks
 
 .DEFAULT_GOAL := help
 
@@ -9,6 +9,9 @@ help: ## Display available commands
 
 build: ## Build the jack binary
 	@go build -o bin/jack ./cmd/jack
+
+install: ## Build and install jack to $GOPATH/bin
+	@go install ./cmd/jack
 
 test: ## Run all tests with race detector
 	@go test -v -race -tags testing ./...

@@ -31,11 +31,10 @@ func applyTeam(teamName, repo, dir string, cp FileCopier) error {
 		return fmt.Errorf("copying governance files: %w", err)
 	}
 
-	// 2. Orders — copy teams/{teamName}/ORDERS.md to .claude/ORDERS.md
-	ordersSrc := filepath.Join(configDir, "teams", teamName, "ORDERS.md")
-	ordersDst := filepath.Join(claudeDir, "ORDERS.md")
-	if err := cp(ordersSrc, ordersDst); err != nil {
-		return fmt.Errorf("copying orders for team %q: %w", teamName, err)
+	// 2. Team files — copy all files from teams/{teamName}/ to .claude/
+	teamDir := filepath.Join(configDir, "teams", teamName)
+	if err := copyDirFiles(teamDir, claudeDir, cp); err != nil {
+		return fmt.Errorf("copying team files for %q: %w", teamName, err)
 	}
 
 	// 3. Project — copy all files from projects/<repo>/ to .claude/
