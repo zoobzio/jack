@@ -33,22 +33,6 @@ func SessionName(team, repo string) string {
 	return team + "-" + repo
 }
 
-// ParseSessionName extracts team and repo from a session name.
-// Matches against known team names using longest-match to handle prefix overlap.
-func ParseSessionName(name string, teams []string) (team, repo string, ok bool) {
-	var match string
-	for _, t := range teams {
-		prefix := t + "-"
-		if strings.HasPrefix(name, prefix) && len(t) > len(match) {
-			match = t
-		}
-	}
-	if match == "" {
-		return "", "", false
-	}
-	return match, name[len(match)+1:], true
-}
-
 // ListSessions calls tmux list-sessions and returns all tmux sessions.
 // Returns an empty slice (not an error) if the tmux server is not running.
 func ListSessions() ([]TmuxSession, error) {

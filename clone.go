@@ -18,28 +18,35 @@ type Cloner func(url, dir string) error
 func init() {
 	cloneCmd.Flags().StringSliceP("team", "t", nil, "teams to clone for (required, repeatable)")
 	_ = cloneCmd.MarkFlagRequired("team")
+	cloneCmd.Flags().BoolP("force", "f", false, "remove existing repo and session before cloning")
 	rootCmd.AddCommand(cloneCmd)
 }
 
 var cloneCmd = &cobra.Command{
 	Use:   "clone <url>",
 	Short: "Clone a repo for a team",
-	Long:  "Clone a git repo into each team's isolated workspace, apply team skills, and create sessions.",
+	Long:  "Clone a git repo into each team's isolated workspace and apply team skills.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		teams, _ := cmd.Flags().GetStringSlice("team")
+		force, _ := cmd.Flags().GetBool("force")
 		client := msg.NewClient(msg.Homeserver, "")
-		return runClone(args[0], teams, gitClone, copyFile, HasSession, CreateSession, sshAdd, client.Register, ageEncrypt, writeDescription, ageDecrypt)
+		return runClone(args[0], teams, force, gitClone, copyFile, HasSession, KillSession, client.Register, client.Login, ageEncrypt, writeDescription, loadRegistry, saveRegistry)
 	},
 }
 
-func runClone(url string, teams []string, clone Cloner, cp FileCopier, hasSession SessionChecker, createSession SessionCreator, addKey KeyAdder, register msg.Registerer, encrypt TokenEncrypter, writeDesc DescriptionWriter, decrypt TokenDecrypter) error {
+func runClone(url string, teams []string, force bool, clone Cloner, cp FileCopier, hasSession SessionChecker, kill SessionKiller, register msg.Registerer, login msg.Authenticator, encrypt TokenEncrypter, writeDesc DescriptionWriter, loadReg RegistryLoader, saveReg RegistrySaver) error {
 	repo := repoName(url)
 	if repo == "" {
 		return fmt.Errorf("cannot extract repo name from %q", url)
 	}
 
 	configDir := env.configDir()
+
+	reg, err := loadReg()
+	if err != nil {
+		return fmt.Errorf("loading registry: %w", err)
+	}
 
 	for _, teamName := range teams {
 		// Validate governance prerequisites per team.
@@ -53,6 +60,25 @@ func runClone(url string, teams []string, clone Cloner, cp FileCopier, hasSessio
 		}
 
 		dir := filepath.Join(env.dataDir(), teamName, repo)
+
+		// Check for existing clone.
+		if _, err := os.Stat(dir); err == nil {
+			if !force {
+				fmt.Printf("warning: %s already exists for team %s, skipping (use --force to replace)\n", repo, teamName)
+				continue
+			}
+			// Kill the session if it's running.
+			name := SessionName(teamName, repo)
+			if hasSession(name) {
+				if err := kill(name); err != nil {
+					return fmt.Errorf("killing session %s: %w", name, err)
+				}
+			}
+			if err := os.RemoveAll(dir); err != nil {
+				return fmt.Errorf("removing %s: %w", dir, err)
+			}
+		}
+
 		parent := filepath.Dir(dir)
 		if err := os.MkdirAll(parent, 0o750); err != nil {
 			return fmt.Errorf("creating directory %s: %w", parent, err)
@@ -66,16 +92,23 @@ func runClone(url string, teams []string, clone Cloner, cp FileCopier, hasSessio
 			return fmt.Errorf("applying team %s: %w", teamName, err)
 		}
 
-		// Register Matrix user for this session.
+		// Register Matrix user for this session, falling back to login if
+		// the user already exists (e.g. re-clone after a failed attempt).
 		username := teamName + "-" + repo
-		reg, err := register(username, username, cfg.Matrix.RegistrationToken)
+		mReg, err := register(username, username, cfg.Matrix.RegistrationToken)
 		if err != nil {
-			return fmt.Errorf("registering Matrix user %s: %w", username, err)
+			if !strings.Contains(err.Error(), "M_USER_IN_USE") {
+				return fmt.Errorf("registering Matrix user %s: %w", username, err)
+			}
+			mReg, err = login(username, username)
+			if err != nil {
+				return fmt.Errorf("logging in Matrix user %s: %w", username, err)
+			}
 		}
 
 		// Encrypt and store the token.
 		pubKeyPath := expandHome(profile.SSH.Key) + ".pub"
-		if err := encrypt(reg.AccessToken, pubKeyPath, tokenAgePath(dir)); err != nil {
+		if err := encrypt(mReg.AccessToken, pubKeyPath, tokenAgePath(dir)); err != nil {
 			return fmt.Errorf("encrypting token for %s: %w", username, err)
 		}
 
@@ -85,9 +118,13 @@ func runClone(url string, teams []string, clone Cloner, cp FileCopier, hasSessio
 			return fmt.Errorf("writing description for %s: %w", username, err)
 		}
 
-		if err := runRun(repo, teamName, dir, true, hasSession, createSession, nil, addKey, decrypt); err != nil {
-			return fmt.Errorf("creating session for team %s: %w", teamName, err)
+		// Record in registry.
+		reg.Add(teamName, repo, url)
+		if err := saveReg(reg); err != nil {
+			return fmt.Errorf("saving registry: %w", err)
 		}
+
+		fmt.Printf("cloned %s for team %s\n", repo, teamName)
 	}
 
 	return nil

@@ -11,8 +11,9 @@ func init() {
 }
 
 var inviteCmd = &cobra.Command{
-	Use:   "invite <room-id> <user-id>",
+	Use:   "invite <room> <user-id>",
 	Short: "Invite a user to a room",
+	Long:  "Invite a user to a room. The room argument can be a room ID, alias, or short alias name.",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
 		token, err := TokenFromEnv()
@@ -20,7 +21,11 @@ var inviteCmd = &cobra.Command{
 			return err
 		}
 		client := NewClient(Homeserver, token)
-		return runInvite(args[0], args[1], client.Invite)
+		roomID, err := ResolveRoomID(args[0], client.ResolveAlias)
+		if err != nil {
+			return err
+		}
+		return runInvite(roomID, args[1], client.Invite)
 	},
 }
 

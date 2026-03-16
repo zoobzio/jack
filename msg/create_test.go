@@ -29,3 +29,23 @@ func TestRunCreateError(t *testing.T) {
 	err := runCreate("general", "", creator)
 	jtesting.AssertError(t, err)
 }
+
+func TestRunCreateWithAliasSuccess(t *testing.T) {
+	Homeserver = "http://localhost:8008"
+	var createdAlias string
+	creator := func(name, topic, alias string) (*Room, error) {
+		createdAlias = alias
+		return &Room{RoomID: "!new:localhost"}, nil
+	}
+	err := runCreateWithAlias("general", "dev chat", "general", creator)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, createdAlias, "general")
+}
+
+func TestRunCreateWithAliasError(t *testing.T) {
+	creator := func(_, _, _ string) (*Room, error) {
+		return nil, fmt.Errorf("alias taken")
+	}
+	err := runCreateWithAlias("general", "", "general", creator)
+	jtesting.AssertError(t, err)
+}

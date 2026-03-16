@@ -31,3 +31,24 @@ func TestRunRoomsError(t *testing.T) {
 	err := runRooms(lister, noopInfoGetter)
 	jtesting.AssertError(t, err)
 }
+
+func TestRunPublicRoomsSuccess(t *testing.T) {
+	lister := func() (*PublicRoomsResponse, error) {
+		return &PublicRoomsResponse{
+			Chunk: []PublicRoom{
+				{RoomID: "!a:localhost", Name: "general", Topic: "general chat", NumJoined: 5},
+				{RoomID: "!b:localhost", Name: "dev", NumJoined: 3},
+			},
+		}, nil
+	}
+	err := runPublicRooms(lister)
+	jtesting.AssertNoError(t, err)
+}
+
+func TestRunPublicRoomsError(t *testing.T) {
+	lister := func() (*PublicRoomsResponse, error) {
+		return nil, fmt.Errorf("server error")
+	}
+	err := runPublicRooms(lister)
+	jtesting.AssertError(t, err)
+}
