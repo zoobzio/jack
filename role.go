@@ -43,7 +43,8 @@ func applyTeam(teamName, repo, dir string, cp FileCopier) error {
 		return fmt.Errorf("copying project files: %w", err)
 	}
 
-	// 4. Skills — resolve symlinks, copy to .claude/commands/
+	// 4. Skills — symlink into .claude/commands/ so the config dir stays
+	//    the source of truth and skill updates propagate immediately.
 	if len(skills) > 0 {
 		commandsDir := filepath.Join(claudeDir, "commands")
 		if err := os.MkdirAll(commandsDir, 0o750); err != nil {
@@ -56,13 +57,23 @@ func applyTeam(teamName, repo, dir string, cp FileCopier) error {
 				return fmt.Errorf("resolving skill %q: %w", skill, err)
 			}
 			dst := filepath.Join(commandsDir, skill)
-			if err := copyDirRecursive(resolved, dst, cp); err != nil {
-				return fmt.Errorf("copying skill %q: %w", skill, err)
+			if err := os.Symlink(resolved, dst); err != nil {
+				return fmt.Errorf("linking skill %q: %w", skill, err)
 			}
 		}
 	}
 
-	// 5. Agents — copy from teams/{teamName}/agents/ to .claude/agents/
+	// 5. Credentials — copy the host's Claude credentials into the project's
+	//    .claude so the sandboxed session can authenticate.
+	home, _ := os.UserHomeDir()
+	credFile := filepath.Join(home, ".claude", ".credentials.json")
+	if _, err := os.Stat(credFile); err == nil {
+		if err := cp(credFile, filepath.Join(claudeDir, ".credentials.json")); err != nil {
+			return fmt.Errorf("copying credentials: %w", err)
+		}
+	}
+
+	// 6. Agents — copy from teams/{teamName}/agents/ to .claude/agents/
 	agentsSrc := filepath.Join(configDir, "teams", teamName, "agents")
 	if entries, err := os.ReadDir(agentsSrc); err == nil && len(entries) > 0 {
 		agentsDst := filepath.Join(claudeDir, "agents")
@@ -89,31 +100,6 @@ func copyDirFiles(srcDir, dstDir string, cp FileCopier) error {
 		}
 		src := filepath.Join(srcDir, entry.Name())
 		dst := filepath.Join(dstDir, entry.Name())
-		if err := cp(src, dst); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// copyDirRecursive copies a directory and all its contents into dst.
-func copyDirRecursive(srcDir, dstDir string, cp FileCopier) error {
-	if err := os.MkdirAll(dstDir, 0o750); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		src := filepath.Join(srcDir, entry.Name())
-		dst := filepath.Join(dstDir, entry.Name())
-		if entry.IsDir() {
-			if err := copyDirRecursive(src, dst, cp); err != nil {
-				return err
-			}
-			continue
-		}
 		if err := cp(src, dst); err != nil {
 			return err
 		}

@@ -59,23 +59,6 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// discoverTeams returns team names by reading subdirectories of teams/ in the
-// config area. Results are sorted by name (os.ReadDir order).
-func discoverTeams() []string {
-	teamsDir := filepath.Join(env.configDir(), "teams")
-	entries, err := os.ReadDir(teamsDir)
-	if err != nil {
-		return nil
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		}
-	}
-	return names
-}
-
 // discoverTeamSkills returns skill names for a team by reading entries from
 // the teams/{name}/skills/ directory. Entries may be directories or symlinks.
 func discoverTeamSkills(teamName string) ([]string, error) {

@@ -36,10 +36,18 @@ func noopCloner(_, _ string) error      { return nil }
 func noopCopier(_, _ string) error       { return nil }
 func noopEncrypter(_, _, _ string) error { return nil }
 func noopDescWriter(_, _ string) error   { return nil }
+func noopKiller(_ string) error          { return nil }
 
 func noopRegisterer(_, _, _ string) (*msg.Registration, error) {
 	return &msg.Registration{AccessToken: "tok_test"}, nil
 }
+
+func noopLogin(_, _ string) (*msg.Registration, error) {
+	return &msg.Registration{AccessToken: "tok_test"}, nil
+}
+
+func noopRegLoader() (*Registry, error) { return &Registry{}, nil }
+func noopRegSaver(_ *Registry) error    { return nil }
 
 // setupGovernanceFixtures creates the governance, projects, skill, and team
 // directories needed for clone validation and team application to pass.
@@ -71,7 +79,10 @@ func setupGovernanceFixtures(t *testing.T, repo string, skills []string) {
 func TestRunCloneUnknownTeam(t *testing.T) {
 	newTestConfig()
 	setupGovernanceFixtures(t, "vicky", []string{"commit", "pr"})
-	err := runClone("git@github.com:zoobzio/vicky.git", []string{"bogus"}, noopCloner, noopCopier, noopChecker, noopCreator, noopAdder, noopRegisterer, noopEncrypter, noopDescWriter, noopDecrypter)
+	err := runClone("git@github.com:zoobzio/vicky.git", []string{"bogus"}, false,
+		noopCloner, noopCopier, noopChecker, noopKiller,
+		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
+		noopRegLoader, noopRegSaver)
 	jtesting.AssertError(t, err)
 	jtesting.AssertEqual(t, strings.Contains(err.Error(), "team skills directory not found"), true)
 }
@@ -81,25 +92,28 @@ func TestRunCloneSuccess(t *testing.T) {
 	setupGovernanceFixtures(t, "vicky", []string{"commit", "pr"})
 
 	var clonedURLs, clonedDirs []string
-	var createdSessions []string
-
 	cloner := func(url, dir string) error {
 		clonedURLs = append(clonedURLs, url)
 		clonedDirs = append(clonedDirs, dir)
 		return nil
 	}
-	creator := func(name, dir, shellCmd string) error {
-		createdSessions = append(createdSessions, name)
+
+	var savedReg *Registry
+	saver := func(r *Registry) error {
+		savedReg = r
 		return nil
 	}
 
-	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, cloner, noopCopier, noopChecker, creator, noopAdder, noopRegisterer, noopEncrypter, noopDescWriter, noopDecrypter)
+	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
+		cloner, noopCopier, noopChecker, noopKiller,
+		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
+		noopRegLoader, saver)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, len(clonedURLs), 1)
 	jtesting.AssertEqual(t, clonedURLs[0], "git@github.com:zoobzio/vicky.git")
 	jtesting.AssertEqual(t, strings.HasSuffix(clonedDirs[0], "blue/vicky"), true)
-	jtesting.AssertEqual(t, len(createdSessions), 1)
-	jtesting.AssertEqual(t, createdSessions[0], "blue-vicky")
+	jtesting.AssertEqual(t, savedReg != nil, true)
+	jtesting.AssertEqual(t, savedReg.Find("blue", "vicky") != nil, true)
 }
 
 func TestRunCloneMultipleTeams(t *testing.T) {
@@ -111,17 +125,20 @@ func TestRunCloneMultipleTeams(t *testing.T) {
 	}
 	setupGovernanceFixtures(t, "vicky", []string{"commit"})
 
-	var createdSessions []string
-	creator := func(name, dir, shellCmd string) error {
-		createdSessions = append(createdSessions, name)
+	var savedReg *Registry
+	saver := func(r *Registry) error {
+		savedReg = r
 		return nil
 	}
 
-	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue", "red"}, noopCloner, noopCopier, noopChecker, creator, noopAdder, noopRegisterer, noopEncrypter, noopDescWriter, noopDecrypter)
+	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue", "red"}, false,
+		noopCloner, noopCopier, noopChecker, noopKiller,
+		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
+		noopRegLoader, saver)
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, len(createdSessions), 2)
-	jtesting.AssertEqual(t, createdSessions[0], "blue-vicky")
-	jtesting.AssertEqual(t, createdSessions[1], "red-vicky")
+	jtesting.AssertEqual(t, len(savedReg.Projects), 2)
+	jtesting.AssertEqual(t, savedReg.Find("blue", "vicky") != nil, true)
+	jtesting.AssertEqual(t, savedReg.Find("red", "vicky") != nil, true)
 }
 
 func TestRunCloneRegistersAndEncrypts(t *testing.T) {
@@ -149,9 +166,10 @@ func TestRunCloneRegistersAndEncrypts(t *testing.T) {
 		return nil
 	}
 
-	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"},
-		noopCloner, noopCopier, noopChecker, noopCreator, noopAdder,
-		registerer, encrypter, descWriter, noopDecrypter)
+	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
+		noopCloner, noopCopier, noopChecker, noopKiller,
+		registerer, noopLogin, encrypter, descWriter,
+		noopRegLoader, noopRegSaver)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, registeredUsername, "blue-vicky")
 	jtesting.AssertEqual(t, encryptedToken, "tok_new")
@@ -166,9 +184,63 @@ func TestRunCloneValidationFailsMissingGovernance(t *testing.T) {
 	configDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: t.TempDir()}
 
-	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"},
-		noopCloner, noopCopier, noopChecker, noopCreator, noopAdder,
-		noopRegisterer, noopEncrypter, noopDescWriter, noopDecrypter)
+	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
+		noopCloner, noopCopier, noopChecker, noopKiller,
+		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
+		noopRegLoader, noopRegSaver)
 	jtesting.AssertError(t, err)
 	jtesting.AssertEqual(t, strings.Contains(err.Error(), "governance"), true)
+}
+
+func TestRunCloneSkipsExisting(t *testing.T) {
+	newTestConfig()
+	setupGovernanceFixtures(t, "vicky", []string{"commit"})
+
+	// Pre-create the repo directory to simulate a previous clone.
+	dir := filepath.Join(env.dataDir(), "blue", "vicky")
+	_ = os.MkdirAll(dir, 0o750)
+
+	var cloned bool
+	cloner := func(_, _ string) error {
+		cloned = true
+		return nil
+	}
+
+	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
+		cloner, noopCopier, noopChecker, noopKiller,
+		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
+		noopRegLoader, noopRegSaver)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, cloned, false)
+}
+
+func TestRunCloneForceReplacesExisting(t *testing.T) {
+	newTestConfig()
+	setupGovernanceFixtures(t, "vicky", []string{"commit"})
+
+	// Pre-create the repo directory to simulate a previous clone.
+	dir := filepath.Join(env.dataDir(), "blue", "vicky")
+	_ = os.MkdirAll(dir, 0o750)
+
+	var cloned bool
+	cloner := func(_, _ string) error {
+		cloned = true
+		return nil
+	}
+
+	var killed bool
+	killer := func(_ string) error {
+		killed = true
+		return nil
+	}
+
+	hasSession := func(_ string) bool { return true }
+
+	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, true,
+		cloner, noopCopier, hasSession, killer,
+		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
+		noopRegLoader, noopRegSaver)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, cloned, true)
+	jtesting.AssertEqual(t, killed, true)
 }

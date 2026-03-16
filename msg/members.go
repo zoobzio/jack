@@ -11,8 +11,9 @@ func init() {
 }
 
 var membersCmd = &cobra.Command{
-	Use:   "members <room-id>",
+	Use:   "members <room>",
 	Short: "List members of a room",
+	Long:  "List members of a room. The room argument can be a room ID, alias, or short alias name.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		token, err := TokenFromEnv()
@@ -20,7 +21,11 @@ var membersCmd = &cobra.Command{
 			return err
 		}
 		client := NewClient(Homeserver, token)
-		return runMembers(args[0], client.Members)
+		roomID, err := ResolveRoomID(args[0], client.ResolveAlias)
+		if err != nil {
+			return err
+		}
+		return runMembers(roomID, client.Members)
 	},
 }
 
