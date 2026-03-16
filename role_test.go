@@ -24,6 +24,12 @@ func TestApplyTeamCopiesAllCategories(t *testing.T) {
 	configDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: "/tmp/jack"}
 
+	// Point HOME to a temp dir so applyTeam can find .claude/.credentials.json.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	_ = os.MkdirAll(filepath.Join(fakeHome, ".claude"), 0o750)
+	_ = os.WriteFile(filepath.Join(fakeHome, ".claude", ".credentials.json"), []byte(`{}`), 0o600)
+
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("be good"), 0o600)
 
@@ -57,8 +63,8 @@ func TestApplyTeamCopiesAllCategories(t *testing.T) {
 	err := applyTeam("blue", "vicky", dir, copier)
 	jtesting.AssertNoError(t, err)
 
-	// 1 governance + 2 team files + 1 project + 2 skills (SKILL.md each) + 1 agent = 7 copies.
-	jtesting.AssertEqual(t, len(copies), 7)
+	// 1 governance + 2 team files + 1 project + 1 credentials + 0 skills (symlinked) + 1 agent = 6 copies.
+	jtesting.AssertEqual(t, len(copies), 6)
 
 	// Governance file.
 	jtesting.AssertEqual(t, strings.HasSuffix(copies[0].src, "governance/PHILOSOPHY.md"), true)
@@ -74,20 +80,35 @@ func TestApplyTeamCopiesAllCategories(t *testing.T) {
 	jtesting.AssertEqual(t, strings.HasSuffix(copies[3].src, "projects/vicky/MISSION.md"), true)
 	jtesting.AssertEqual(t, strings.HasSuffix(copies[3].dst, ".claude/MISSION.md"), true)
 
-	// Skills (directory-based: teams/blue/skills/<name>/SKILL.md).
-	jtesting.AssertEqual(t, strings.HasSuffix(copies[4].src, "skills/commit/SKILL.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(copies[4].dst, ".claude/commands/commit/SKILL.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(copies[5].src, "skills/pr/SKILL.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(copies[5].dst, ".claude/commands/pr/SKILL.md"), true)
+	// Skills — verify symlinks created in .claude/commands/.
+	commitLink := filepath.Join(dir, ".claude", "commands", "commit")
+	target, err := os.Readlink(commitLink)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, target, filepath.Join(teamSkillsDir, "commit"))
+
+	prLink := filepath.Join(dir, ".claude", "commands", "pr")
+	target, err = os.Readlink(prLink)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, target, filepath.Join(teamSkillsDir, "pr"))
+
+	// Credentials.
+	jtesting.AssertEqual(t, strings.HasSuffix(copies[4].src, ".claude/.credentials.json"), true)
+	jtesting.AssertEqual(t, strings.HasSuffix(copies[4].dst, ".claude/.credentials.json"), true)
 
 	// Agent (from teams/blue/agents/).
-	jtesting.AssertEqual(t, strings.HasSuffix(copies[6].src, "teams/blue/agents/zidgel.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(copies[6].dst, ".claude/agents/zidgel.md"), true)
+	jtesting.AssertEqual(t, strings.HasSuffix(copies[5].src, "teams/blue/agents/zidgel.md"), true)
+	jtesting.AssertEqual(t, strings.HasSuffix(copies[5].dst, ".claude/agents/zidgel.md"), true)
 }
 
 func TestApplyTeamNoAgentsDir(t *testing.T) {
 	configDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: "/tmp/jack"}
+
+	// Point HOME to a temp dir so applyTeam can find .claude/.credentials.json.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	_ = os.MkdirAll(filepath.Join(fakeHome, ".claude"), 0o750)
+	_ = os.WriteFile(filepath.Join(fakeHome, ".claude", ".credentials.json"), []byte(`{}`), 0o600)
 
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("be good"), 0o600)
@@ -113,7 +134,7 @@ func TestApplyTeamNoAgentsDir(t *testing.T) {
 	dir := t.TempDir()
 	err := applyTeam("solo", "vicky", dir, copier)
 	jtesting.AssertNoError(t, err)
-	// 1 governance + 2 team files + 1 project + 1 skill (SKILL.md) + 0 agents = 5.
+	// 1 governance + 2 team files + 1 project + 1 credentials + 0 skills (symlinked) + 0 agents = 5.
 	jtesting.AssertEqual(t, copyCount, 5)
 }
 

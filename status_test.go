@@ -4,8 +4,6 @@ package jack
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,48 +11,42 @@ import (
 	jtesting "github.com/zoobzio/jack/testing"
 )
 
-func TestRunStatusNoSessions(t *testing.T) {
-	cfg = Config{
-		Profiles: map[string]Profile{
-			"blue": {},
-			"red":  {},
-		},
-	}
+func TestRunStatusEmptyRegistry(t *testing.T) {
+	var buf bytes.Buffer
+	err := runStatus(&buf, stubRegistry(), func() ([]TmuxSession, error) {
+		return nil, nil
+	})
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, strings.Contains(buf.String(), "no projects cloned"), true)
+}
 
-	configDir := t.TempDir()
-	env = Env{ConfigDir: configDir, DataDir: t.TempDir()}
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue"), 0o750)
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "red"), 0o750)
+func TestRunStatusNoSessions(t *testing.T) {
+	reg := stubRegistry(
+		RegistryEntry{Team: "blue", Repo: "vicky"},
+		RegistryEntry{Team: "red", Repo: "flux"},
+	)
 
 	var buf bytes.Buffer
-	err := runStatus(&buf, func() ([]TmuxSession, error) {
+	err := runStatus(&buf, reg, func() ([]TmuxSession, error) {
 		return nil, nil
 	})
 	jtesting.AssertNoError(t, err)
 
 	output := buf.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	// Header + 2 teams.
-	jtesting.AssertEqual(t, len(lines), 3)
 	jtesting.AssertEqual(t, strings.Contains(output, "blue"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "red"), true)
+	jtesting.AssertEqual(t, strings.Contains(output, "not running"), true)
 }
 
 func TestRunStatusWithSessions(t *testing.T) {
-	cfg = Config{
-		Profiles: map[string]Profile{
-			"blue": {},
-			"red":  {},
-		},
-	}
-
-	configDir := t.TempDir()
-	env = Env{ConfigDir: configDir, DataDir: t.TempDir()}
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue"), 0o750)
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "red"), 0o750)
+	reg := stubRegistry(
+		RegistryEntry{Team: "blue", Repo: "vicky"},
+		RegistryEntry{Team: "blue", Repo: "flux"},
+		RegistryEntry{Team: "red", Repo: "sentinel"},
+	)
 
 	var buf bytes.Buffer
-	err := runStatus(&buf, func() ([]TmuxSession, error) {
+	err := runStatus(&buf, reg, func() ([]TmuxSession, error) {
 		return []TmuxSession{
 			{
 				Name:     "blue-vicky",
@@ -85,14 +77,14 @@ func TestRunStatusWithSessions(t *testing.T) {
 	jtesting.AssertNoError(t, err)
 
 	output := buf.String()
-	// Both blue sessions appear with details.
+	// Blue team projects.
 	jtesting.AssertEqual(t, strings.Contains(output, "blue-vicky"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "blue-flux"), true)
-	jtesting.AssertEqual(t, strings.Contains(output, "/home/user/vicky"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "attached"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "active"), true)
-	// Red has no sessions, still listed.
+	// Red team project not running.
 	jtesting.AssertEqual(t, strings.Contains(output, "red"), true)
+	jtesting.AssertEqual(t, strings.Contains(output, "not running"), true)
 	// Non-jack session filtered out.
 	jtesting.AssertEqual(t, strings.Contains(output, "personal"), false)
 }

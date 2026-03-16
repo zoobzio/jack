@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"text/tabwriter"
 	"time"
 
@@ -23,55 +22,55 @@ var statusCmd = &cobra.Command{
 	Short: "Show team and session status",
 	Args:  cobra.NoArgs,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		return runStatus(os.Stdout, ListSessions)
+		return runStatus(os.Stdout, loadRegistry, ListSessions)
 	},
 }
 
-func runStatus(w io.Writer, list Lister) error {
+func runStatus(w io.Writer, loadReg RegistryLoader, list Lister) error {
+	reg, err := loadReg()
+	if err != nil {
+		return fmt.Errorf("loading registry: %w", err)
+	}
+
 	sessions, err := list()
 	if err != nil {
 		return fmt.Errorf("listing tmux sessions: %w", err)
 	}
 
-	teams := discoverTeams()
-
-	active := make(map[string][]SessionInfo)
+	// Build session lookup by name.
+	sessionMap := make(map[string]TmuxSession)
 	for _, s := range sessions {
-		team, repo, ok := ParseSessionName(s.Name, teams)
-		if !ok {
-			continue
-		}
-		active[team] = append(active[team], SessionInfo{
-			TmuxSession: s,
-			Team:        team,
-			Repo:        repo,
-		})
+		sessionMap[s.Name] = s
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "TEAM\tPROFILE\tSESSION\tDIRECTORY\tSTATUS")
-
-	for _, team := range teams {
-		infos := active[team]
-		if len(infos) == 0 {
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t-\t-\t-\n", team, team)
-			continue
-		}
-		sort.Slice(infos, func(i, j int) bool {
-			return infos[i].Name < infos[j].Name
-		})
-		for _, info := range infos {
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				team,
-				team,
-				info.Name,
-				info.Path,
-				sessionStatus(info),
-			)
-		}
+	teams := reg.Teams()
+	if len(teams) == 0 {
+		_, _ = fmt.Fprintln(w, "no projects cloned")
+		return nil
 	}
 
-	return tw.Flush()
+	for i, team := range teams {
+		if i > 0 {
+			_, _ = fmt.Fprintln(w)
+		}
+		_, _ = fmt.Fprintln(w, team)
+
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		_, _ = fmt.Fprintln(tw, "PROJECT\tSESSION\tSTATUS")
+
+		for _, entry := range reg.ForTeam(team) {
+			name := SessionName(team, entry.Repo)
+			if s, ok := sessionMap[name]; ok {
+				info := SessionInfo{TmuxSession: s, Team: team, Repo: entry.Repo}
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", entry.Repo, name, sessionStatus(info))
+			} else {
+				_, _ = fmt.Fprintf(tw, "%s\t-\tnot running\n", entry.Repo)
+			}
+		}
+		_ = tw.Flush()
+	}
+
+	return nil
 }
 
 func sessionStatus(info SessionInfo) string {
@@ -95,4 +94,3 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
 }
-
