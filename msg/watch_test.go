@@ -73,6 +73,61 @@ func TestRunWatchFollow(t *testing.T) {
 	jtesting.AssertEqual(t, callCount, 4)
 }
 
+func TestRunWatchInvite(t *testing.T) {
+	callCount := 0
+	syncer := func(_ context.Context, _ string, _ int, _ string) (*SyncResponse, error) {
+		callCount++
+		if callCount == 1 {
+			return &SyncResponse{NextBatch: "batch_1"}, nil
+		}
+		return &SyncResponse{
+			NextBatch: "batch_2",
+			Rooms: SyncRooms{
+				Invite: map[string]SyncInvitedRoom{
+					"!newroom:localhost": {
+						InviteState: SyncInviteState{
+							Events: []Message{
+								{Type: "m.room.name", Content: map[string]interface{}{"name": "planning"}},
+								{Type: "m.room.member", Sender: "@alice:localhost", Content: map[string]interface{}{"membership": "invite"}},
+							},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+	err := runWatch(5, false, false, syncer, nil)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, callCount, 2)
+}
+
+func TestRunWatchInviteJSON(t *testing.T) {
+	callCount := 0
+	syncer := func(_ context.Context, _ string, _ int, _ string) (*SyncResponse, error) {
+		callCount++
+		if callCount == 1 {
+			return &SyncResponse{NextBatch: "batch_1"}, nil
+		}
+		return &SyncResponse{
+			NextBatch: "batch_2",
+			Rooms: SyncRooms{
+				Invite: map[string]SyncInvitedRoom{
+					"!newroom:localhost": {
+						InviteState: SyncInviteState{
+							Events: []Message{
+								{Type: "m.room.name", Content: map[string]interface{}{"name": "planning"}},
+								{Type: "m.room.member", Sender: "@alice:localhost", Content: map[string]interface{}{"membership": "invite"}},
+							},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+	err := runWatch(5, false, true, syncer, nil)
+	jtesting.AssertNoError(t, err)
+}
+
 func TestRunWatchJSON(t *testing.T) {
 	callCount := 0
 	syncer := func(_ context.Context, _ string, _ int, _ string) (*SyncResponse, error) {

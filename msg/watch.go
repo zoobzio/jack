@@ -36,12 +36,41 @@ var watchCmd = &cobra.Command{
 }
 
 type watchMessage struct {
+	Type     string `json:"type"`
 	RoomID   string `json:"room_id"`
 	RoomName string `json:"room_name,omitempty"`
 	Sender   string `json:"sender"`
 	Body     string `json:"body"`
-	EventID  string `json:"event_id"`
+	EventID  string `json:"event_id,omitempty"`
 }
+
+// parseInvites extracts invite info from a sync response's invite map.
+func parseInvites(invites map[string]SyncInvitedRoom) []inviteInfo {
+	out := make([]inviteInfo, 0, len(invites))
+	for roomID, room := range invites {
+		inv := inviteInfo{RoomID: roomID}
+		for _, ev := range room.InviteState.Events {
+			switch ev.Type {
+			case "m.room.name":
+				if name, ok := ev.Content["name"].(string); ok {
+					inv.Name = name
+				}
+			case "m.room.member":
+				if membership, ok := ev.Content["membership"].(string); ok && membership == "invite" {
+					inv.Sender = ev.Sender
+				}
+			}
+		}
+		out = append(out, inv)
+	}
+	return out
+}
+
+// pollInterval is the maximum duration for a single sync request.
+// The overall deadline is controlled by the context; this just caps
+// how long one HTTP round-trip can block so that incoming messages
+// are detected promptly even if the server ignores early returns.
+const pollInterval = 5
 
 func runWatch(timeout int, follow, jsonOut bool, sync syncFunc, getInfo RoomInfoGetter) error {
 	ctx := context.Background()
@@ -77,8 +106,11 @@ func runWatch(timeout int, follow, jsonOut bool, sync syncFunc, getInfo RoomInfo
 	enc.SetIndent("", "  ")
 
 	for {
-		resp, err = sync(ctx, resp.NextBatch, timeout, "")
+		resp, err = sync(ctx, resp.NextBatch, pollInterval, "")
 		if err != nil {
+			if ctx.Err() != nil && !follow {
+				return fmt.Errorf("no new messages within timeout")
+			}
 			return fmt.Errorf("sync: %w", err)
 		}
 
@@ -92,6 +124,7 @@ func runWatch(timeout int, follow, jsonOut bool, sync syncFunc, getInfo RoomInfo
 				body, _ := m.Content["body"].(string)
 				if jsonOut {
 					if err := enc.Encode(watchMessage{
+						Type:     "message",
 						RoomID:   roomID,
 						RoomName: lookupName(roomID),
 						Sender:   m.Sender,
@@ -106,11 +139,38 @@ func runWatch(timeout int, follow, jsonOut bool, sync syncFunc, getInfo RoomInfo
 			}
 		}
 
+		for _, inv := range parseInvites(resp.Rooms.Invite) {
+			found = true
+			name := inv.Name
+			if name == "" {
+				name = inv.RoomID
+			}
+			sender := inv.Sender
+			if sender == "" {
+				sender = unknownPlaceholder
+			}
+			if jsonOut {
+				if err := enc.Encode(watchMessage{
+					Type:     "invite",
+					RoomID:   inv.RoomID,
+					RoomName: name,
+					Sender:   sender,
+					Body:     fmt.Sprintf("invited you to %s", name),
+				}); err != nil {
+					return fmt.Errorf("encoding invite: %w", err)
+				}
+			} else {
+				fmt.Printf("[invite] %s invited you to %s\n", sender, name)
+			}
+		}
+
 		if !follow {
-			if !found {
+			if found {
+				return nil
+			}
+			if ctx.Err() != nil {
 				return fmt.Errorf("no new messages within timeout")
 			}
-			return nil
 		}
 	}
 }

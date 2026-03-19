@@ -33,7 +33,7 @@ func TestRepoName(t *testing.T) {
 }
 
 func noopCloner(_, _ string) error      { return nil }
-func noopCopier(_, _ string) error       { return nil }
+func noopLinker(_, _ string) error { return nil }
 func noopEncrypter(_, _, _ string) error { return nil }
 func noopDescWriter(_, _ string) error   { return nil }
 func noopKiller(_ string) error          { return nil }
@@ -80,7 +80,7 @@ func TestRunCloneUnknownTeam(t *testing.T) {
 	newTestConfig()
 	setupGovernanceFixtures(t, "vicky", []string{"commit", "pr"})
 	err := runClone("git@github.com:zoobzio/vicky.git", []string{"bogus"}, false,
-		noopCloner, noopCopier, noopChecker, noopKiller,
+		noopCloner, noopLinker, noopChecker, noopKiller,
 		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
 		noopRegLoader, noopRegSaver)
 	jtesting.AssertError(t, err)
@@ -105,7 +105,7 @@ func TestRunCloneSuccess(t *testing.T) {
 	}
 
 	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
-		cloner, noopCopier, noopChecker, noopKiller,
+		cloner, noopLinker, noopChecker, noopKiller,
 		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
 		noopRegLoader, saver)
 	jtesting.AssertNoError(t, err)
@@ -132,7 +132,7 @@ func TestRunCloneMultipleTeams(t *testing.T) {
 	}
 
 	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue", "red"}, false,
-		noopCloner, noopCopier, noopChecker, noopKiller,
+		noopCloner, noopLinker, noopChecker, noopKiller,
 		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
 		noopRegLoader, saver)
 	jtesting.AssertNoError(t, err)
@@ -167,7 +167,7 @@ func TestRunCloneRegistersAndEncrypts(t *testing.T) {
 	}
 
 	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
-		noopCloner, noopCopier, noopChecker, noopKiller,
+		noopCloner, noopLinker, noopChecker, noopKiller,
 		registerer, noopLogin, encrypter, descWriter,
 		noopRegLoader, noopRegSaver)
 	jtesting.AssertNoError(t, err)
@@ -185,7 +185,7 @@ func TestRunCloneValidationFailsMissingGovernance(t *testing.T) {
 	env = Env{ConfigDir: configDir, DataDir: t.TempDir()}
 
 	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
-		noopCloner, noopCopier, noopChecker, noopKiller,
+		noopCloner, noopLinker, noopChecker, noopKiller,
 		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
 		noopRegLoader, noopRegSaver)
 	jtesting.AssertError(t, err)
@@ -207,7 +207,7 @@ func TestRunCloneSkipsExisting(t *testing.T) {
 	}
 
 	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, false,
-		cloner, noopCopier, noopChecker, noopKiller,
+		cloner, noopLinker, noopChecker, noopKiller,
 		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
 		noopRegLoader, noopRegSaver)
 	jtesting.AssertNoError(t, err)
@@ -237,7 +237,7 @@ func TestRunCloneForceReplacesExisting(t *testing.T) {
 	hasSession := func(_ string) bool { return true }
 
 	err := runClone("git@github.com:zoobzio/vicky.git", []string{"blue"}, true,
-		cloner, noopCopier, hasSession, killer,
+		cloner, noopLinker, hasSession, killer,
 		noopRegisterer, noopLogin, noopEncrypter, noopDescWriter,
 		noopRegLoader, noopRegSaver)
 	jtesting.AssertNoError(t, err)

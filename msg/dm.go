@@ -35,7 +35,7 @@ var dmSendCmd = &cobra.Command{
 			}
 			message = strings.TrimRight(string(data), "\n")
 		}
-		return runDMSend(args[0], message, client.WhoAmI, client.GetDirectRooms, client.SetDirectRooms, client.Send, client.CreateDMRoom, client.GetProfile, client.SetRoomAlias)
+		return runDMSend(args[0], message, client.WhoAmI, client.GetDirectRooms, client.SetDirectRooms, client.Send, client.CreateDMRoom, client.GetProfile, client.SetRoomAlias, client.ResolveAlias, client.Join)
 	},
 }
 
@@ -124,7 +124,7 @@ func resolveDMRoomByAlias(targetID string, whoami WhoAmIGetter, resolve AliasRes
 	return roomID, nil
 }
 
-func runDMSend(target, message string, whoami WhoAmIGetter, getDirect directRoomGetter, setDirect directRoomSetter, send MessageSender, createDM DMRoomCreator, checkProfile ProfileChecker, setAlias RoomAliasCreator) error {
+func runDMSend(target, message string, whoami WhoAmIGetter, getDirect directRoomGetter, setDirect directRoomSetter, send MessageSender, createDM DMRoomCreator, checkProfile ProfileChecker, setAlias RoomAliasCreator, resolve AliasResolver, join RoomJoiner) error {
 	targetID := resolveUserID(target)
 
 	me, err := whoami()
@@ -140,6 +140,19 @@ func runDMSend(target, message string, whoami WhoAmIGetter, getDirect directRoom
 	var roomID string
 	if rooms, ok := directs[targetID]; ok && len(rooms) > 0 {
 		roomID = rooms[0]
+	}
+
+	// Try joining an existing DM room via deterministic alias before creating
+	// a new one. This handles the case where the other user already created
+	// the room and we have a pending invite.
+	if roomID == "" {
+		if found, resolveErr := resolveDMRoomByAlias(targetID, func() (*WhoAmIResponse, error) { return me, nil }, resolve, join); resolveErr == nil {
+			roomID = found
+			directs[targetID] = []string{roomID}
+			if setErr := setDirect(me.UserID, directs); setErr != nil {
+				return fmt.Errorf("updating direct rooms: %w", setErr)
+			}
+		}
 	}
 
 	if roomID == "" {
