@@ -20,6 +20,8 @@ import (
 // msgTypeRoomMessage is the Matrix event type for room messages.
 const msgTypeRoomMessage = "m.room.message"
 
+const unknownPlaceholder = "unknown"
+
 // Package-level config set by the parent package during PersistentPreRunE.
 var (
 	Homeserver        string
@@ -199,12 +201,23 @@ type SyncResponse struct {
 
 // SyncRooms contains room data from a sync response.
 type SyncRooms struct {
-	Join map[string]SyncJoinedRoom `json:"join"`
+	Join   map[string]SyncJoinedRoom  `json:"join"`
+	Invite map[string]SyncInvitedRoom `json:"invite"`
 }
 
 // SyncJoinedRoom contains timeline data for a joined room.
 type SyncJoinedRoom struct {
 	Timeline SyncTimeline `json:"timeline"`
+}
+
+// SyncInvitedRoom contains invite state from a sync response.
+type SyncInvitedRoom struct {
+	InviteState SyncInviteState `json:"invite_state"`
+}
+
+// SyncInviteState contains stripped state events for an invited room.
+type SyncInviteState struct {
+	Events []Message `json:"events"`
 }
 
 // SyncTimeline contains timeline events from a sync.

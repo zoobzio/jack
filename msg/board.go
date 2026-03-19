@@ -210,29 +210,34 @@ func runBoardWatch(name, topic, aliasName string, timeout int, follow bool, reso
 	}
 
 	for {
-		resp, err = sync(ctx, resp.NextBatch, timeout, roomID)
+		resp, err = sync(ctx, resp.NextBatch, pollInterval, roomID)
 		if err != nil {
+			if ctx.Err() != nil && !follow {
+				return fmt.Errorf("no new messages within timeout")
+			}
 			return fmt.Errorf("sync: %w", err)
 		}
 
 		room, ok := resp.Rooms.Join[roomID]
-		if !ok || len(room.Timeline.Events) == 0 {
-			if !follow {
-				return fmt.Errorf("no new messages within timeout")
+		found := false
+		if ok {
+			for _, m := range room.Timeline.Events {
+				if m.Type != msgTypeRoomMessage {
+					continue
+				}
+				found = true
+				body, _ := m.Content["body"].(string)
+				fmt.Printf("%s: %s\n", m.Sender, body)
 			}
-			continue
-		}
-
-		for _, m := range room.Timeline.Events {
-			if m.Type != msgTypeRoomMessage {
-				continue
-			}
-			body, _ := m.Content["body"].(string)
-			fmt.Printf("%s: %s\n", m.Sender, body)
 		}
 
 		if !follow {
-			return nil
+			if found {
+				return nil
+			}
+			if ctx.Err() != nil {
+				return fmt.Errorf("no new messages within timeout")
+			}
 		}
 	}
 }

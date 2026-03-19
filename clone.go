@@ -31,11 +31,11 @@ var cloneCmd = &cobra.Command{
 		teams, _ := cmd.Flags().GetStringSlice("team")
 		force, _ := cmd.Flags().GetBool("force")
 		client := msg.NewClient(msg.Homeserver, "")
-		return runClone(args[0], teams, force, gitClone, copyFile, HasSession, KillSession, client.Register, client.Login, ageEncrypt, writeDescription, loadRegistry, saveRegistry)
+		return runClone(args[0], teams, force, gitClone, linkFile, HasSession, KillSession, client.Register, client.Login, ageEncrypt, writeDescription, loadRegistry, saveRegistry)
 	},
 }
 
-func runClone(url string, teams []string, force bool, clone Cloner, cp FileCopier, hasSession SessionChecker, kill SessionKiller, register msg.Registerer, login msg.Authenticator, encrypt TokenEncrypter, writeDesc DescriptionWriter, loadReg RegistryLoader, saveReg RegistrySaver) error {
+func runClone(url string, teams []string, force bool, clone Cloner, ln FileLinker, hasSession SessionChecker, kill SessionKiller, register msg.Registerer, login msg.Authenticator, encrypt TokenEncrypter, writeDesc DescriptionWriter, loadReg RegistryLoader, saveReg RegistrySaver) error {
 	repo := repoName(url)
 	if repo == "" {
 		return fmt.Errorf("cannot extract repo name from %q", url)
@@ -88,7 +88,7 @@ func runClone(url string, teams []string, force bool, clone Cloner, cp FileCopie
 			return fmt.Errorf("cloning %s for team %s: %w", repo, teamName, err)
 		}
 
-		if err := applyTeam(teamName, repo, dir, cp); err != nil {
+		if err := applyTeam(teamName, repo, dir, ln); err != nil {
 			return fmt.Errorf("applying team %s: %w", teamName, err)
 		}
 

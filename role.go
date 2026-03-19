@@ -2,17 +2,17 @@ package jack
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 )
 
-// FileCopier copies a file from src to dst.
-type FileCopier func(src, dst string) error
+// FileLinker symlinks a file from src to dst.
+type FileLinker func(src, dst string) error
 
 // applyTeam provisions governance, orders, project, skill, and agent files into
-// the repo's .claude directory.
-func applyTeam(teamName, repo, dir string, cp FileCopier) error {
+// the repo's .claude directory. All files are symlinked so the jack config
+// directory remains the single source of truth.
+func applyTeam(teamName, repo, dir string, ln FileLinker) error {
 	skills, err := discoverTeamSkills(teamName)
 	if err != nil {
 		return err
@@ -25,22 +25,22 @@ func applyTeam(teamName, repo, dir string, cp FileCopier) error {
 		return fmt.Errorf("creating .claude dir: %w", err)
 	}
 
-	// 1. Governance — copy all files from governance/ to .claude/
+	// 1. Governance — symlink all files from governance/ to .claude/
 	govDir := filepath.Join(configDir, "governance")
-	if err := copyDirFiles(govDir, claudeDir, cp); err != nil {
-		return fmt.Errorf("copying governance files: %w", err)
+	if err := linkDirFiles(govDir, claudeDir, ln); err != nil {
+		return fmt.Errorf("linking governance files: %w", err)
 	}
 
-	// 2. Team files — copy all files from teams/{teamName}/ to .claude/
+	// 2. Team files — symlink all files from teams/{teamName}/ to .claude/
 	teamDir := filepath.Join(configDir, "teams", teamName)
-	if err := copyDirFiles(teamDir, claudeDir, cp); err != nil {
-		return fmt.Errorf("copying team files for %q: %w", teamName, err)
+	if err := linkDirFiles(teamDir, claudeDir, ln); err != nil {
+		return fmt.Errorf("linking team files for %q: %w", teamName, err)
 	}
 
-	// 3. Project — copy all files from projects/<repo>/ to .claude/
+	// 3. Project — symlink all files from projects/<repo>/ to .claude/
 	projectDir := filepath.Join(configDir, "projects", repo)
-	if err := copyDirFiles(projectDir, claudeDir, cp); err != nil {
-		return fmt.Errorf("copying project files: %w", err)
+	if err := linkDirFiles(projectDir, claudeDir, ln); err != nil {
+		return fmt.Errorf("linking project files: %w", err)
 	}
 
 	// 4. Skills — symlink into .claude/commands/ so the config dir stays
@@ -63,33 +63,25 @@ func applyTeam(teamName, repo, dir string, cp FileCopier) error {
 		}
 	}
 
-	// 5. Credentials — copy the host's Claude credentials into the project's
-	//    .claude so the sandboxed session can authenticate.
-	home, _ := os.UserHomeDir()
-	credFile := filepath.Join(home, ".claude", ".credentials.json")
-	if _, err := os.Stat(credFile); err == nil {
-		if err := cp(credFile, filepath.Join(claudeDir, ".credentials.json")); err != nil {
-			return fmt.Errorf("copying credentials: %w", err)
-		}
-	}
-
-	// 6. Agents — copy from teams/{teamName}/agents/ to .claude/agents/
+	// 5. Agents — symlink from teams/{teamName}/agents/ to .claude/agents/
 	agentsSrc := filepath.Join(configDir, "teams", teamName, "agents")
 	if entries, err := os.ReadDir(agentsSrc); err == nil && len(entries) > 0 {
 		agentsDst := filepath.Join(claudeDir, "agents")
 		if err := os.MkdirAll(agentsDst, 0o750); err != nil {
 			return fmt.Errorf("creating agents dir: %w", err)
 		}
-		if err := copyDirFiles(agentsSrc, agentsDst, cp); err != nil {
-			return fmt.Errorf("copying agents for team %q: %w", teamName, err)
+		if err := linkDirFiles(agentsSrc, agentsDst, ln); err != nil {
+			return fmt.Errorf("linking agents for team %q: %w", teamName, err)
 		}
 	}
 
 	return nil
 }
 
-// copyDirFiles copies all files (not subdirectories) from srcDir into dstDir.
-func copyDirFiles(srcDir, dstDir string, cp FileCopier) error {
+// linkDirFiles symlinks all files (not subdirectories) from srcDir into dstDir.
+// If a file already exists at dst it is removed before linking, allowing
+// higher-priority sources (project > team > governance) to override.
+func linkDirFiles(srcDir, dstDir string, ln FileLinker) error {
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		return err
@@ -100,7 +92,8 @@ func copyDirFiles(srcDir, dstDir string, cp FileCopier) error {
 		}
 		src := filepath.Join(srcDir, entry.Name())
 		dst := filepath.Join(dstDir, entry.Name())
-		if err := cp(src, dst); err != nil {
+		_ = os.Remove(dst)
+		if err := ln(src, dst); err != nil {
 			return err
 		}
 	}
@@ -154,22 +147,12 @@ func validateGovernance(configDir, teamName, repo string) error {
 	return nil
 }
 
-// copyFile copies a file from src to dst.
-func copyFile(src, dst string) error {
-	in, err := os.Open(filepath.Clean(src))
+// linkFile creates a symlink at dst pointing to src. The source path is
+// resolved through EvalSymlinks so the link always points to the real file.
+func linkFile(src, dst string) error {
+	resolved, err := filepath.EvalSymlinks(src)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = in.Close() }()
-
-	out, err := os.Create(filepath.Clean(dst))
-	if err != nil {
-		return err
-	}
-	defer func() { _ = out.Close() }()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Close()
+	return os.Symlink(resolved, filepath.Clean(dst))
 }

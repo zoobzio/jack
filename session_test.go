@@ -38,7 +38,7 @@ func TestBuildShellCmd(t *testing.T) {
 
 	jtesting.AssertEqual(t, strings.Contains(cmd, `git config user.name "Test User"`), true)
 	jtesting.AssertEqual(t, strings.Contains(cmd, `git config user.email "test@example.com"`), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "claude --dangerously-skip-permissions"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "claude --dangerously-skip-permissions --teammate-mode in-process"), true)
 	jtesting.AssertEqual(t, strings.Contains(cmd, " && "), true)
 	jtesting.AssertEqual(t, strings.Contains(cmd, "export JACK_TEAM=blue"), true)
 }
@@ -49,7 +49,7 @@ func TestBuildShellCmdNoGitConfig(t *testing.T) {
 	cmd := buildShellCmd("", profile, "/tmp", "", "")
 
 	jtesting.AssertEqual(t, strings.Contains(cmd, "git config"), false)
-	jtesting.AssertEqual(t, cmd, "exec claude --dangerously-skip-permissions")
+	jtesting.AssertEqual(t, cmd, "exec claude --dangerously-skip-permissions --teammate-mode in-process")
 }
 
 func TestBuildShellCmdWithToken(t *testing.T) {
@@ -92,17 +92,3 @@ func TestBuildEnvFileEmpty(t *testing.T) {
 	jtesting.AssertEqual(t, content, "\n")
 }
 
-func TestBuildSandboxShellCmd(t *testing.T) {
-	profile := Profile{
-		Git: GitConfig{Name: "Test User", Email: "test@example.com"},
-	}
-
-	cmd := buildSandboxShellCmd("blue", profile, "/home/user/project", "", "")
-
-	jtesting.AssertEqual(t, strings.Contains(cmd, "unshare --mount --user --map-root-user --pid --fork"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "mount --bind /home/user/project $root/home/project"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "pivot_root $root $root/tmp"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "export HOME=/home/project"), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "CLAUDE_CONFIG_DIR="), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "claude --dangerously-skip-permissions"), true)
-}

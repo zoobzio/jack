@@ -31,7 +31,10 @@ func TestRunDMSendExistingRoom(t *testing.T) {
 	checker := func(_ string) error { return nil }
 	aliaser := func(_, _ string) error { return nil }
 
-	err := runDMSend("blue-flux", "hello", whoami, getDirect, setDirect, sender, creator, checker, aliaser)
+	resolver := func(_ string) (*AliasResponse, error) { return nil, fmt.Errorf("not found") }
+	joiner := func(_ string) (string, error) { return "", fmt.Errorf("not found") }
+
+	err := runDMSend("blue-flux", "hello", whoami, getDirect, setDirect, sender, creator, checker, aliaser, resolver, joiner)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, sentRoom, "!dm:localhost")
 	jtesting.AssertEqual(t, sentMsg, "hello")
@@ -63,7 +66,10 @@ func TestRunDMSendCreatesRoom(t *testing.T) {
 		return nil
 	}
 
-	err := runDMSend("blue-flux", "hey", whoami, getDirect, setDirect, sender, creator, checker, aliaser)
+	resolver := func(_ string) (*AliasResponse, error) { return nil, fmt.Errorf("not found") }
+	joiner := func(_ string) (string, error) { return "", fmt.Errorf("not found") }
+
+	err := runDMSend("blue-flux", "hey", whoami, getDirect, setDirect, sender, creator, checker, aliaser, resolver, joiner)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, createdInvite, "@blue-flux:localhost")
 	jtesting.AssertEqual(t, directsSet, true)
@@ -90,7 +96,10 @@ func TestRunDMSendWithFullUserID(t *testing.T) {
 	checker := func(_ string) error { return nil }
 	aliaser := func(_, _ string) error { return nil }
 
-	err := runDMSend("@red-flux:example.com", "hi", whoami, getDirect, setDirect, sender, creator, checker, aliaser)
+	resolver := func(_ string) (*AliasResponse, error) { return nil, fmt.Errorf("not found") }
+	joiner := func(_ string) (string, error) { return "", fmt.Errorf("not found") }
+
+	err := runDMSend("@red-flux:example.com", "hi", whoami, getDirect, setDirect, sender, creator, checker, aliaser, resolver, joiner)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, sentRoom, "!dm:example.com")
 }
@@ -99,7 +108,7 @@ func TestRunDMSendWhoAmIError(t *testing.T) {
 	whoami := func() (*WhoAmIResponse, error) {
 		return nil, fmt.Errorf("unauthorized")
 	}
-	err := runDMSend("someone", "hi", whoami, nil, nil, nil, nil, nil, nil)
+	err := runDMSend("someone", "hi", whoami, nil, nil, nil, nil, nil, nil, nil, nil)
 	jtesting.AssertError(t, err)
 }
 
@@ -117,8 +126,45 @@ func TestRunDMSendNonexistentUser(t *testing.T) {
 	checker := func(_ string) error { return fmt.Errorf("not found") }
 	aliaser := func(_, _ string) error { return nil }
 
-	err := runDMSend("ghost", "hello", whoami, getDirect, setDirect, sender, creator, checker, aliaser)
+	resolver := func(_ string) (*AliasResponse, error) { return nil, fmt.Errorf("not found") }
+	joiner := func(_ string) (string, error) { return "", fmt.Errorf("not found") }
+
+	err := runDMSend("ghost", "hello", whoami, getDirect, setDirect, sender, creator, checker, aliaser, resolver, joiner)
 	jtesting.AssertError(t, err)
+}
+
+func TestRunDMSendAliasFallback(t *testing.T) {
+	Homeserver = "http://localhost:8008"
+	whoami := func() (*WhoAmIResponse, error) {
+		return &WhoAmIResponse{UserID: "@blue-vicky:localhost"}, nil
+	}
+	getDirect := func(_ string) (map[string][]string, error) {
+		return map[string][]string{}, nil // no m.direct entry
+	}
+	var directsUpdated map[string][]string
+	setDirect := func(_ string, rooms map[string][]string) error {
+		directsUpdated = rooms
+		return nil
+	}
+	var sentRoom string
+	sender := func(roomID, _ string) (string, error) {
+		sentRoom = roomID
+		return "$evt1", nil
+	}
+	creator := func(_ string) (*Room, error) { return nil, fmt.Errorf("should not create") }
+	checker := func(_ string) error { return nil }
+	aliaser := func(_, _ string) error { return nil }
+	resolver := func(alias string) (*AliasResponse, error) {
+		return &AliasResponse{RoomID: "!existing-dm:localhost"}, nil
+	}
+	joiner := func(roomID string) (string, error) {
+		return roomID, nil
+	}
+
+	err := runDMSend("blue-flux", "hello", whoami, getDirect, setDirect, sender, creator, checker, aliaser, resolver, joiner)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, sentRoom, "!existing-dm:localhost")
+	jtesting.AssertEqual(t, len(directsUpdated["@blue-flux:localhost"]), 1)
 }
 
 func TestRunDMReadSuccess(t *testing.T) {
