@@ -96,7 +96,7 @@ func runWhoOnline(dataDir string, getPresence PresenceGetter, resolve AliasResol
 	for _, p := range reg.Projects {
 		userID := fmt.Sprintf("@%s-%s:%s", p.Team, p.Repo, server)
 
-		status := "unknown"
+		status := unknownPlaceholder
 		presence, err := getPresence(userID)
 		if err == nil {
 			status = presence.Presence
