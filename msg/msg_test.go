@@ -136,36 +136,36 @@ func TestTokenFromEnvFile(t *testing.T) {
 	dir := t.TempDir()
 	jackDir := filepath.Join(dir, ".jack")
 	_ = os.MkdirAll(jackDir, 0o750)
-	_ = os.WriteFile(filepath.Join(jackDir, "env"), []byte("JACK_MSG_TOKEN=tok_file\nJACK_TEAM=blue\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(jackDir, "env"), []byte("JACK_MSG_TOKEN=tok_file\nJACK_AGENT=blue\n"), 0o600)
 	t.Chdir(dir)
 	token, err := TokenFromEnv()
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, token, "tok_file")
 }
 
-func TestTeamFromEnv(t *testing.T) {
-	t.Setenv("JACK_TEAM", "blue")
-	team, err := TeamFromEnv()
+func TestAgentFromEnv(t *testing.T) {
+	t.Setenv("JACK_AGENT", "blue")
+	agent, err := AgentFromEnv()
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, team, "blue")
+	jtesting.AssertEqual(t, agent, "blue")
 }
 
-func TestTeamFromEnvMissing(t *testing.T) {
-	t.Setenv("JACK_TEAM", "")
-	_, err := TeamFromEnv()
+func TestAgentFromEnvMissing(t *testing.T) {
+	t.Setenv("JACK_AGENT", "")
+	_, err := AgentFromEnv()
 	jtesting.AssertError(t, err)
 }
 
-func TestTeamFromEnvFile(t *testing.T) {
-	t.Setenv("JACK_TEAM", "")
+func TestAgentFromEnvFile(t *testing.T) {
+	t.Setenv("JACK_AGENT", "")
 	dir := t.TempDir()
 	jackDir := filepath.Join(dir, ".jack")
 	_ = os.MkdirAll(jackDir, 0o750)
-	_ = os.WriteFile(filepath.Join(jackDir, "env"), []byte("JACK_TEAM=red\nJACK_MSG_TOKEN=tok\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(jackDir, "env"), []byte("JACK_AGENT=red\nJACK_MSG_TOKEN=tok\n"), 0o600)
 	t.Chdir(dir)
-	team, err := TeamFromEnv()
+	agent, err := AgentFromEnv()
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, team, "red")
+	jtesting.AssertEqual(t, agent, "red")
 }
 
 func TestServerName(t *testing.T) {

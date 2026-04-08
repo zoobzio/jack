@@ -32,7 +32,7 @@ func sshAdd(key string) error {
 	return cmd.Run()
 }
 
-func buildShellCmd(team string, profile Profile, _, token, ghToken string) string {
+func buildShellCmd(agent string, profile Profile, _, token, ghToken string) string {
 	var parts []string
 
 	// Set git identity.
@@ -43,8 +43,8 @@ func buildShellCmd(team string, profile Profile, _, token, ghToken string) strin
 		parts = append(parts, fmt.Sprintf("git config user.email %q", profile.Git.Email))
 	}
 
-	if team != "" {
-		parts = append(parts, fmt.Sprintf("export JACK_TEAM=%s", team))
+	if agent != "" {
+		parts = append(parts, fmt.Sprintf("export JACK_AGENT=%s", agent))
 	}
 	if token != "" {
 		parts = append(parts, fmt.Sprintf("export JACK_MSG_TOKEN=%s", token))
@@ -61,7 +61,7 @@ func buildShellCmd(team string, profile Profile, _, token, ghToken string) strin
 // bwrap sandbox. Kept for future use once bwrap integration is debugged.
 //
 //nolint:unused // intentionally kept for future use
-func buildBwrapShellCmd(team string, profile Profile, dir, token, ghToken string) string {
+func buildBwrapShellCmd(agent string, profile Profile, dir, token, ghToken string) string {
 	var parts []string
 
 	// Set git identity before entering the sandbox.
@@ -103,8 +103,8 @@ func buildBwrapShellCmd(team string, profile Profile, dir, token, ghToken string
 	}
 
 	// Environment variables.
-	if team != "" {
-		bwrap = append(bwrap, fmt.Sprintf("--setenv JACK_TEAM %s", team))
+	if agent != "" {
+		bwrap = append(bwrap, fmt.Sprintf("--setenv JACK_AGENT %s", agent))
 	}
 	if token != "" {
 		bwrap = append(bwrap, fmt.Sprintf("--setenv JACK_MSG_TOKEN %s", token))
@@ -122,10 +122,10 @@ func buildBwrapShellCmd(team string, profile Profile, dir, token, ghToken string
 // buildEnvFile creates the content for a .jack/env file containing session
 // environment variables. Commands spawned by Claude read this file as a
 // fallback when env vars are not inherited from the process environment.
-func buildEnvFile(team, token, ghToken string) string {
+func buildEnvFile(agent, token, ghToken string) string {
 	var lines []string
-	if team != "" {
-		lines = append(lines, "JACK_TEAM="+team)
+	if agent != "" {
+		lines = append(lines, "JACK_AGENT="+agent)
 	}
 	if token != "" {
 		lines = append(lines, "JACK_MSG_TOKEN="+token)
@@ -135,4 +135,3 @@ func buildEnvFile(team, token, ghToken string) string {
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
-

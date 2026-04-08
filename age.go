@@ -56,8 +56,8 @@ func tokenAgePath(repoDir string) string {
 	return filepath.Join(repoDir, ".jack", "token.age")
 }
 
-func ghTokenAgePath(teamName string) string {
-	return filepath.Join(env.configDir(), "teams", teamName, ".github-token.age")
+func ghTokenAgePath(agentName string) string {
+	return filepath.Join(env.configDir(), "agents", agentName, ".github-token.age")
 }
 
 func descriptionPath(repoDir string) string {

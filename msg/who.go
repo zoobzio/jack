@@ -37,8 +37,8 @@ var whoCmd = &cobra.Command{
 // session users without importing the parent package.
 type registryData struct {
 	Projects []struct {
-		Team string `yaml:"team"`
-		Repo string `yaml:"repo"`
+		Agent string `yaml:"agent"`
+		Repo  string `yaml:"repo"`
 	} `yaml:"projects"`
 }
 
@@ -69,7 +69,7 @@ func runWho(dataDir string) error {
 	server := ServerName(Homeserver)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, p := range reg.Projects {
-		_, _ = fmt.Fprintf(w, "@%s-%s:%s\t%s\t%s\n", p.Team, p.Repo, server, p.Team, p.Repo)
+		_, _ = fmt.Fprintf(w, "@%s-%s:%s\t%s\t%s\n", p.Agent, p.Repo, server, p.Agent, p.Repo)
 	}
 	return w.Flush()
 }
@@ -94,7 +94,7 @@ func runWhoOnline(dataDir string, getPresence PresenceGetter, resolve AliasResol
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, p := range reg.Projects {
-		userID := fmt.Sprintf("@%s-%s:%s", p.Team, p.Repo, server)
+		userID := fmt.Sprintf("@%s-%s:%s", p.Agent, p.Repo, server)
 
 		status := unknownPlaceholder
 		presence, err := getPresence(userID)
@@ -117,7 +117,7 @@ func runWhoOnline(dataDir string, getPresence PresenceGetter, resolve AliasResol
 			board = "yes"
 		}
 
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\tboard: %s\n", userID, p.Team, p.Repo, status, board)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\tboard: %s\n", userID, p.Agent, p.Repo, status, board)
 	}
 	return w.Flush()
 }

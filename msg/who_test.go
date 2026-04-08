@@ -14,9 +14,9 @@ import (
 func TestRunWhoSuccess(t *testing.T) {
 	dir := t.TempDir()
 	regContent := `projects:
-  - team: blue
+  - agent: blue
     repo: vicky
-  - team: blue
+  - agent: blue
     repo: flux
 `
 	_ = os.WriteFile(filepath.Join(dir, "registry.yaml"), []byte(regContent), 0o600)
@@ -39,7 +39,7 @@ func TestRunWhoMissingRegistry(t *testing.T) {
 func TestRunWhoOnlineSuccess(t *testing.T) {
 	dir := t.TempDir()
 	regContent := `projects:
-  - team: blue
+  - agent: blue
     repo: vicky
 `
 	_ = os.WriteFile(filepath.Join(dir, "registry.yaml"), []byte(regContent), 0o600)
@@ -66,7 +66,7 @@ func TestRunWhoOnlineSuccess(t *testing.T) {
 func TestRunWhoOnlineOffline(t *testing.T) {
 	dir := t.TempDir()
 	regContent := `projects:
-  - team: blue
+  - agent: blue
     repo: vicky
 `
 	_ = os.WriteFile(filepath.Join(dir, "registry.yaml"), []byte(regContent), 0o600)
@@ -91,7 +91,7 @@ func TestRunWhoOnlineOffline(t *testing.T) {
 func TestRunWhoOnlineError(t *testing.T) {
 	dir := t.TempDir()
 	regContent := `projects:
-  - team: blue
+  - agent: blue
     repo: vicky
 `
 	_ = os.WriteFile(filepath.Join(dir, "registry.yaml"), []byte(regContent), 0o600)
@@ -114,9 +114,9 @@ func TestRunWhoOnlineError(t *testing.T) {
 func TestRunWhoOnlineBoardMembership(t *testing.T) {
 	dir := t.TempDir()
 	regContent := `projects:
-  - team: rockhopper
+  - agent: rockhopper
     repo: sentinel
-  - team: wintermute
+  - agent: wintermute
     repo: sentinel
 `
 	_ = os.WriteFile(filepath.Join(dir, "registry.yaml"), []byte(regContent), 0o600)

@@ -17,15 +17,15 @@ func stubRegistry(entries ...RegistryEntry) RegistryLoader {
 	}
 }
 
-func stubTeamSelector(team string) TeamSelector {
-	return func(_ []string) (string, error) { return team, nil }
+func stubAgentSelector(agent string) AgentSelector {
+	return func(_ []string) (string, error) { return agent, nil }
 }
 
 func stubProjectSelector(project string) ProjectSelector {
 	return func(_ string, _ []string) (string, error) { return project, nil }
 }
 
-var failSelector TeamSelector = func(_ []string) (string, error) {
+var failSelector AgentSelector = func(_ []string) (string, error) {
 	return "", nil
 }
 
@@ -42,19 +42,19 @@ func TestRunInEmptyRegistry(t *testing.T) {
 	jtesting.AssertEqual(t, strings.Contains(err.Error(), "no projects cloned"), true)
 }
 
-func TestRunInNoProjectsForTeam(t *testing.T) {
-	reg := stubRegistry(RegistryEntry{Team: "blue", Repo: "vicky"})
+func TestRunInNoProjectsForAgent(t *testing.T) {
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
 	err := runIn("red", "", reg, failSelector, failProjectSelector,
 		noopChecker, noopCreator, noopAttacher, noopAdder, noopDecrypter, noopProvisioner)
 	jtesting.AssertError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(err.Error(), "no projects cloned for team"), true)
+	jtesting.AssertEqual(t, strings.Contains(err.Error(), "no projects cloned for agent"), true)
 }
 
 func TestRunInAttachesExistingSession(t *testing.T) {
 	newTestConfig()
 	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
 
-	reg := stubRegistry(RegistryEntry{Team: "blue", Repo: "vicky"})
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
 
 	var attachedName string
 	attacher := func(name string) error {
@@ -72,7 +72,7 @@ func TestRunInCreatesAndAttaches(t *testing.T) {
 	newTestConfig()
 	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
 
-	reg := stubRegistry(RegistryEntry{Team: "blue", Repo: "vicky"})
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
 
 	var createdName, attachedName string
 	creator := func(name, dir, shellCmd string) error {
@@ -91,11 +91,11 @@ func TestRunInCreatesAndAttaches(t *testing.T) {
 	jtesting.AssertEqual(t, attachedName, "blue-vicky")
 }
 
-func TestRunInAutoSelectsSingleTeam(t *testing.T) {
+func TestRunInAutoSelectsSingleAgent(t *testing.T) {
 	newTestConfig()
 	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
 
-	reg := stubRegistry(RegistryEntry{Team: "blue", Repo: "vicky"})
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
 
 	var attachedName string
 	attacher := func(name string) error {
@@ -103,33 +103,33 @@ func TestRunInAutoSelectsSingleTeam(t *testing.T) {
 		return nil
 	}
 
-	// No team or project specified — should auto-select the only team and project.
+	// No agent or project specified — should auto-select the only agent and project.
 	err := runIn("", "", reg, failSelector, failProjectSelector,
 		noopChecker, noopCreator, attacher, noopAdder, noopDecrypter, noopProvisioner)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, attachedName, "blue-vicky")
 }
 
-func TestRunInPromptsForTeam(t *testing.T) {
+func TestRunInPromptsForAgent(t *testing.T) {
 	newTestConfig()
 	cfg.Profiles["red"] = Profile{Git: GitConfig{Name: "Red"}}
 	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
 
 	reg := stubRegistry(
-		RegistryEntry{Team: "blue", Repo: "vicky"},
-		RegistryEntry{Team: "red", Repo: "flux"},
+		RegistryEntry{Agent: "blue", Repo: "vicky"},
+		RegistryEntry{Agent: "red", Repo: "flux"},
 	)
 
-	var selectedTeam string
-	teamSel := func(teams []string) (string, error) {
-		selectedTeam = "red"
+	var selectedAgent string
+	agentSel := func(agents []string) (string, error) {
+		selectedAgent = "red"
 		return "red", nil
 	}
 
-	err := runIn("", "", reg, teamSel, failProjectSelector,
+	err := runIn("", "", reg, agentSel, failProjectSelector,
 		noopChecker, noopCreator, noopAttacher, noopAdder, noopDecrypter, noopProvisioner)
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, selectedTeam, "red")
+	jtesting.AssertEqual(t, selectedAgent, "red")
 }
 
 func TestRunInPromptsForProject(t *testing.T) {
@@ -137,8 +137,8 @@ func TestRunInPromptsForProject(t *testing.T) {
 	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
 
 	reg := stubRegistry(
-		RegistryEntry{Team: "blue", Repo: "vicky"},
-		RegistryEntry{Team: "blue", Repo: "flux"},
+		RegistryEntry{Agent: "blue", Repo: "vicky"},
+		RegistryEntry{Agent: "blue", Repo: "flux"},
 	)
 
 	var selectedProject string
@@ -164,7 +164,7 @@ func TestRunInDecryptsToken(t *testing.T) {
 	_ = os.MkdirAll(jackDir, 0o750)
 	_ = os.WriteFile(filepath.Join(jackDir, "token.age"), []byte("encrypted"), 0o600)
 
-	reg := stubRegistry(RegistryEntry{Team: "blue", Repo: "vicky"})
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
 
 	creator := func(_, _, _ string) error { return nil }
 	decrypter := func(_, _ string) (string, error) {
@@ -193,12 +193,12 @@ func TestRunInDecryptsGHToken(t *testing.T) {
 	jackDir := filepath.Join(projDir, ".jack")
 	_ = os.MkdirAll(jackDir, 0o750)
 
-	// Create GitHub token file at the team-level path.
-	ghTokenDir := filepath.Join(configDir, "teams", "blue")
+	// Create GitHub token file at the agent-level path.
+	ghTokenDir := filepath.Join(configDir, "agents", "blue")
 	_ = os.MkdirAll(ghTokenDir, 0o750)
 	_ = os.WriteFile(filepath.Join(ghTokenDir, ".github-token.age"), []byte("encrypted"), 0o600)
 
-	reg := stubRegistry(RegistryEntry{Team: "blue", Repo: "vicky"})
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
 
 	creator := func(_, _, _ string) error { return nil }
 	decrypter := func(_, _ string) (string, error) {
@@ -216,16 +216,61 @@ func TestRunInDecryptsGHToken(t *testing.T) {
 	jtesting.AssertEqual(t, strings.Contains(string(scriptContent), "export GH_TOKEN=ghp_decrypted"), true)
 }
 
-func TestRunInUnknownTeamProfile(t *testing.T) {
+func TestRunInUnknownAgentProfile(t *testing.T) {
 	newTestConfig()
 	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
 
-	reg := stubRegistry(RegistryEntry{Team: "unknown", Repo: "vicky"})
+	reg := stubRegistry(RegistryEntry{Agent: "unknown", Repo: "vicky"})
 
 	err := runIn("unknown", "vicky", reg, failSelector, failProjectSelector,
 		noopChecker, noopCreator, noopAttacher, noopAdder, noopDecrypter, noopProvisioner)
 	jtesting.AssertError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(err.Error(), "unknown team"), true)
+	jtesting.AssertEqual(t, strings.Contains(err.Error(), "unknown agent"), true)
+}
+
+func TestBoardAutoJoinMatchEmpty(t *testing.T) {
+	cfg = Config{}
+	jtesting.AssertEqual(t, boardAutoJoinMatch("anything"), true)
+}
+
+func TestBoardAutoJoinMatchPattern(t *testing.T) {
+	cfg = Config{Matrix: MatrixConfig{BoardAutoJoin: "^(blue|red)$"}}
+	jtesting.AssertEqual(t, boardAutoJoinMatch("blue"), true)
+	jtesting.AssertEqual(t, boardAutoJoinMatch("red"), true)
+	jtesting.AssertEqual(t, boardAutoJoinMatch("green"), false)
+}
+
+func TestBoardAutoJoinMatchInvalidRegex(t *testing.T) {
+	cfg = Config{Matrix: MatrixConfig{BoardAutoJoin: "[invalid"}}
+	jtesting.AssertEqual(t, boardAutoJoinMatch("blue"), false)
+}
+
+func TestRunInSkipsBoardWhenAutoJoinNoMatch(t *testing.T) {
+	newTestConfig()
+	cfg.Matrix.BoardAutoJoin = "^red$"
+	dir := t.TempDir()
+	env = Env{DataDir: dir, ConfigDir: t.TempDir()}
+
+	projDir := filepath.Join(dir, "blue", "vicky")
+	jackDir := filepath.Join(projDir, ".jack")
+	_ = os.MkdirAll(jackDir, 0o750)
+	_ = os.WriteFile(filepath.Join(jackDir, "token.age"), []byte("encrypted"), 0o600)
+
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
+
+	provisioned := false
+	provisioner := func(_, _ string) error {
+		provisioned = true
+		return nil
+	}
+	decrypter := func(_, _ string) (string, error) {
+		return "tok_session", nil
+	}
+
+	err := runIn("blue", "vicky", reg, failSelector, failProjectSelector,
+		noopChecker, noopCreator, noopAttacher, noopAdder, decrypter, provisioner)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, provisioned, false)
 }
 
 func TestRunInProvisionsBoardWithToken(t *testing.T) {
@@ -238,7 +283,7 @@ func TestRunInProvisionsBoardWithToken(t *testing.T) {
 	_ = os.MkdirAll(jackDir, 0o750)
 	_ = os.WriteFile(filepath.Join(jackDir, "token.age"), []byte("encrypted"), 0o600)
 
-	reg := stubRegistry(RegistryEntry{Team: "blue", Repo: "vicky"})
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
 
 	var provisionedToken, provisionedName string
 	provisioner := func(token, name string) error {

@@ -12,7 +12,7 @@ import (
 var boardCmd = &cobra.Command{
 	Use:   "board",
 	Short: "Construct board messaging",
-	Long:  "Post to, read from, and watch the team or global construct board room.",
+	Long:  "Post to, read from, and watch the agent or global construct board room.",
 }
 
 var boardPostCmd = &cobra.Command{
@@ -30,7 +30,10 @@ var boardPostCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return runBoardPost(name, topic, aliasName, message, client.ResolveAlias, client.Send, client.CreateRoomWithAlias)
+		if err := runBoardPost(name, topic, aliasName, message, client.ResolveAlias, client.Send, client.CreateRoomWithAlias); err != nil {
+			return err
+		}
+		return postCheck(cmd)
 	},
 }
 
@@ -92,6 +95,7 @@ func init() {
 	boardReadCmd.Flags().String("from", "", "filter messages by sender username")
 	boardWatchCmd.Flags().Int("timeout", 30, "seconds to wait before giving up")
 	boardWatchCmd.Flags().BoolP("follow", "f", false, "stream messages continuously")
+	addCheckFlags(boardPostCmd)
 	boardCmd.AddCommand(boardPostCmd)
 	boardCmd.AddCommand(boardReadCmd)
 	boardCmd.AddCommand(boardWatchCmd)
@@ -103,7 +107,7 @@ const GlobalBoardAlias = "construct-board"
 
 // ProvisionGlobalBoard ensures the global construct board room exists and joins
 // the current user to it. This is called during session provisioning so that
-// every construct is in a shared room for cross-team discovery.
+// every construct is in a shared room for cross-agent discovery.
 func ProvisionGlobalBoard(token string) error {
 	client := NewClient(Homeserver, token)
 	roomID, err := ensureBoardRoom("construct-board", "Global construct board", GlobalBoardAlias, client.ResolveAlias, client.CreateRoomWithAlias)
@@ -136,11 +140,11 @@ func boardTarget(cmd *cobra.Command) (name, topic, aliasName string, err error) 
 	if global {
 		return "construct-board", "Global construct board", "construct-board", nil
 	}
-	team, err := TeamFromEnv()
+	agent, err := AgentFromEnv()
 	if err != nil {
 		return "", "", "", err
 	}
-	return "board-" + team, fmt.Sprintf("Construct board for team %s", team), "board-" + team, nil
+	return "board-" + agent, fmt.Sprintf("Construct board for agent %s", agent), "board-" + agent, nil
 }
 
 func boardAlias(aliasName string) string {

@@ -11,39 +11,35 @@ import (
 	jtesting "github.com/zoobzio/jack/testing"
 )
 
-func TestApplyTeamUnknownTeam(t *testing.T) {
+func TestApplyAgentUnknownAgent(t *testing.T) {
 	configDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: "/tmp/jack"}
-	err := applyTeam("bogus", "vicky", "/tmp/repo", noopLinker)
+	err := applyAgent("bogus", "vicky", "/tmp/repo", noopLinker)
 	jtesting.AssertError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(err.Error(), "team skills directory"), true)
+	jtesting.AssertEqual(t, strings.Contains(err.Error(), "agent skills directory"), true)
 }
 
-func TestApplyTeamLinksAllCategories(t *testing.T) {
-	// Set up a config directory with governance, team skills, orders, projects.
+func TestApplyAgentLinksAllCategories(t *testing.T) {
+	// Set up a config directory with governance, agent skills, orders, projects.
 	configDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: "/tmp/jack"}
 
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("be good"), 0o600)
 
-	// Team skills directory with skill dirs.
-	teamSkillsDir := filepath.Join(configDir, "teams", "blue", "skills")
-	_ = os.MkdirAll(filepath.Join(teamSkillsDir, "commit"), 0o750)
-	_ = os.WriteFile(filepath.Join(teamSkillsDir, "commit", "SKILL.md"), []byte("commit"), 0o600)
-	_ = os.MkdirAll(filepath.Join(teamSkillsDir, "pr"), 0o750)
-	_ = os.WriteFile(filepath.Join(teamSkillsDir, "pr", "SKILL.md"), []byte("pr"), 0o600)
+	// Agent skills directory with skill dirs.
+	agentSkillsDir := filepath.Join(configDir, "agents", "blue", "skills")
+	_ = os.MkdirAll(filepath.Join(agentSkillsDir, "commit"), 0o750)
+	_ = os.WriteFile(filepath.Join(agentSkillsDir, "commit", "SKILL.md"), []byte("commit"), 0o600)
+	_ = os.MkdirAll(filepath.Join(agentSkillsDir, "pr"), 0o750)
+	_ = os.WriteFile(filepath.Join(agentSkillsDir, "pr", "SKILL.md"), []byte("pr"), 0o600)
 
-	// Team files.
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "blue", "ORDERS.md"), []byte("orders"), 0o600)
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "blue", "PROTOCOL.md"), []byte("protocol"), 0o600)
+	// Agent files.
+	_ = os.WriteFile(filepath.Join(configDir, "agents", "blue", "ORDERS.md"), []byte("orders"), 0o600)
+	_ = os.WriteFile(filepath.Join(configDir, "agents", "blue", "PROTOCOL.md"), []byte("protocol"), 0o600)
 
 	_ = os.MkdirAll(filepath.Join(configDir, "projects", "vicky"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "projects", "vicky", "MISSION.md"), []byte("mission"), 0o600)
-
-	// Team agent directory.
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue", "agents"), 0o750)
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "blue", "agents", "zidgel.md"), []byte("zidgel"), 0o600)
 
 	type linkOp struct{ src, dst string }
 	var links []linkOp
@@ -54,20 +50,20 @@ func TestApplyTeamLinksAllCategories(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	err := applyTeam("blue", "vicky", dir, linker)
+	err := applyAgent("blue", "vicky", dir, linker)
 	jtesting.AssertNoError(t, err)
 
-	// 1 governance + 2 team files + 1 project + 0 skills (symlinked directly) + 1 agent = 5 links.
-	jtesting.AssertEqual(t, len(links), 5)
+	// 1 governance + 2 agent files + 1 project + 0 skills (symlinked directly) = 4 links.
+	jtesting.AssertEqual(t, len(links), 4)
 
 	// Governance file.
 	jtesting.AssertEqual(t, strings.HasSuffix(links[0].src, "governance/PHILOSOPHY.md"), true)
 	jtesting.AssertEqual(t, strings.HasSuffix(links[0].dst, ".claude/PHILOSOPHY.md"), true)
 
-	// Team files (alphabetical: ORDERS.md, PROTOCOL.md).
-	jtesting.AssertEqual(t, strings.HasSuffix(links[1].src, "teams/blue/ORDERS.md"), true)
+	// Agent files (alphabetical: ORDERS.md, PROTOCOL.md).
+	jtesting.AssertEqual(t, strings.HasSuffix(links[1].src, "agents/blue/ORDERS.md"), true)
 	jtesting.AssertEqual(t, strings.HasSuffix(links[1].dst, ".claude/ORDERS.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[2].src, "teams/blue/PROTOCOL.md"), true)
+	jtesting.AssertEqual(t, strings.HasSuffix(links[2].src, "agents/blue/PROTOCOL.md"), true)
 	jtesting.AssertEqual(t, strings.HasSuffix(links[2].dst, ".claude/PROTOCOL.md"), true)
 
 	// Project file.
@@ -78,33 +74,29 @@ func TestApplyTeamLinksAllCategories(t *testing.T) {
 	commitLink := filepath.Join(dir, ".claude", "commands", "commit")
 	target, err := os.Readlink(commitLink)
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, target, filepath.Join(teamSkillsDir, "commit"))
+	jtesting.AssertEqual(t, target, filepath.Join(agentSkillsDir, "commit"))
 
 	prLink := filepath.Join(dir, ".claude", "commands", "pr")
 	target, err = os.Readlink(prLink)
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, target, filepath.Join(teamSkillsDir, "pr"))
-
-	// Agent (from teams/blue/agents/).
-	jtesting.AssertEqual(t, strings.HasSuffix(links[4].src, "teams/blue/agents/zidgel.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[4].dst, ".claude/agents/zidgel.md"), true)
+	jtesting.AssertEqual(t, target, filepath.Join(agentSkillsDir, "pr"))
 }
 
-func TestApplyTeamNoAgentsDir(t *testing.T) {
+func TestApplyAgentNoAgentsDir(t *testing.T) {
 	configDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: "/tmp/jack"}
 
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("be good"), 0o600)
 
-	// Team skills directory with one skill.
-	teamSkillsDir := filepath.Join(configDir, "teams", "solo", "skills")
-	_ = os.MkdirAll(filepath.Join(teamSkillsDir, "commit"), 0o750)
-	_ = os.WriteFile(filepath.Join(teamSkillsDir, "commit", "SKILL.md"), []byte("commit"), 0o600)
+	// Agent skills directory with one skill.
+	agentSkillsDir := filepath.Join(configDir, "agents", "solo", "skills")
+	_ = os.MkdirAll(filepath.Join(agentSkillsDir, "commit"), 0o750)
+	_ = os.WriteFile(filepath.Join(agentSkillsDir, "commit", "SKILL.md"), []byte("commit"), 0o600)
 
-	// Team files.
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "solo", "ORDERS.md"), []byte("orders"), 0o600)
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "solo", "PROTOCOL.md"), []byte("protocol"), 0o600)
+	// Agent files.
+	_ = os.WriteFile(filepath.Join(configDir, "agents", "solo", "ORDERS.md"), []byte("orders"), 0o600)
+	_ = os.WriteFile(filepath.Join(configDir, "agents", "solo", "PROTOCOL.md"), []byte("protocol"), 0o600)
 
 	_ = os.MkdirAll(filepath.Join(configDir, "projects", "vicky"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "projects", "vicky", "MISSION.md"), []byte("mission"), 0o600)
@@ -116,9 +108,9 @@ func TestApplyTeamNoAgentsDir(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	err := applyTeam("solo", "vicky", dir, linker)
+	err := applyAgent("solo", "vicky", dir, linker)
 	jtesting.AssertNoError(t, err)
-	// 1 governance + 2 team files + 1 project + 0 skills (symlinked) + 0 agents = 4.
+	// 1 governance + 2 agent files + 1 project + 0 skills (symlinked) + 0 agent defs = 4.
 	jtesting.AssertEqual(t, linkCount, 4)
 }
 
@@ -138,33 +130,21 @@ func TestValidateGovernanceEmptyDir(t *testing.T) {
 	jtesting.AssertEqual(t, strings.Contains(err.Error(), "governance directory"), true)
 }
 
-func TestValidateGovernanceMissingTeamSkillsDir(t *testing.T) {
+func TestValidateGovernanceMissingAgentSkillsDir(t *testing.T) {
 	configDir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("x"), 0o600)
 
 	err := validateGovernance(configDir, "blue", "vicky")
 	jtesting.AssertError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(err.Error(), "team skills directory not found"), true)
-}
-
-func TestValidateGovernanceMissingOrdersMd(t *testing.T) {
-	configDir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
-	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("x"), 0o600)
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue", "skills"), 0o750)
-
-	err := validateGovernance(configDir, "blue", "vicky")
-	jtesting.AssertError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(err.Error(), "ORDERS.md not found"), true)
+	jtesting.AssertEqual(t, strings.Contains(err.Error(), "agent skills directory not found"), true)
 }
 
 func TestValidateGovernanceMissingProjectDir(t *testing.T) {
 	configDir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("x"), 0o600)
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue", "skills"), 0o750)
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "blue", "ORDERS.md"), []byte("x"), 0o600)
+	_ = os.MkdirAll(filepath.Join(configDir, "agents", "blue", "skills"), 0o750)
 
 	err := validateGovernance(configDir, "blue", "vicky")
 	jtesting.AssertError(t, err)
@@ -175,8 +155,7 @@ func TestValidateGovernanceMissingMission(t *testing.T) {
 	configDir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("x"), 0o600)
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue", "skills"), 0o750)
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "blue", "ORDERS.md"), []byte("x"), 0o600)
+	_ = os.MkdirAll(filepath.Join(configDir, "agents", "blue", "skills"), 0o750)
 	_ = os.MkdirAll(filepath.Join(configDir, "projects", "vicky"), 0o750)
 
 	err := validateGovernance(configDir, "blue", "vicky")
@@ -188,8 +167,7 @@ func TestValidateGovernanceSuccess(t *testing.T) {
 	configDir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(configDir, "governance"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "governance", "PHILOSOPHY.md"), []byte("x"), 0o600)
-	_ = os.MkdirAll(filepath.Join(configDir, "teams", "blue", "skills"), 0o750)
-	_ = os.WriteFile(filepath.Join(configDir, "teams", "blue", "ORDERS.md"), []byte("x"), 0o600)
+	_ = os.MkdirAll(filepath.Join(configDir, "agents", "blue", "skills"), 0o750)
 	_ = os.MkdirAll(filepath.Join(configDir, "projects", "vicky"), 0o750)
 	_ = os.WriteFile(filepath.Join(configDir, "projects", "vicky", "MISSION.md"), []byte("x"), 0o600)
 

@@ -13,6 +13,7 @@ import (
 func init() {
 	sendCmd.Flags().Bool("json", false, "validate message is valid JSON before sending")
 	sendCmd.Flags().Bool("stdin", false, "read message from stdin")
+	addCheckFlags(sendCmd)
 	Cmd.AddCommand(sendCmd)
 }
 
@@ -53,7 +54,10 @@ var sendCmd = &cobra.Command{
 				return fmt.Errorf("message is not valid JSON")
 			}
 		}
-		return runSend(roomID, message, client.Send)
+		if err := runSend(roomID, message, client.Send); err != nil {
+			return err
+		}
+		return postCheck(cmd)
 	},
 }
 

@@ -53,7 +53,7 @@ func TestRunWatchNoMessages(t *testing.T) {
 		return &SyncResponse{NextBatch: "batch_1"}, nil
 	}
 	err := runWatch(1, false, false, syncer, nil)
-	jtesting.AssertError(t, err)
+	jtesting.AssertNoError(t, err)
 }
 
 func TestRunWatchFollow(t *testing.T) {
@@ -68,7 +68,8 @@ func TestRunWatchFollow(t *testing.T) {
 		}
 		return nil, fmt.Errorf("done")
 	}
-	err := runWatch(1, true, false, syncer, nil)
+	// follow keeps looping through empty syncs until a real error
+	err := runWatch(0, true, false, syncer, nil)
 	jtesting.AssertError(t, err)
 	jtesting.AssertEqual(t, callCount, 4)
 }

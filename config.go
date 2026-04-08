@@ -13,14 +13,21 @@ import (
 
 // Config represents the top-level YAML configuration.
 type Config struct {
-	Profiles map[string]Profile `yaml:"profiles"`
-	Matrix   MatrixConfig       `yaml:"matrix"`
+	Profiles   map[string]Profile `yaml:"profiles"`
+	Matrix     MatrixConfig       `yaml:"matrix"`
+	Classifier ClassifierConfig   `yaml:"classifier"`
+}
+
+// ClassifierConfig holds settings for the content classifier service.
+type ClassifierConfig struct {
+	Endpoint string `yaml:"endpoint"`
 }
 
 // MatrixConfig holds Matrix homeserver connection settings.
 type MatrixConfig struct {
 	Homeserver        string `yaml:"homeserver"`
 	RegistrationToken string `yaml:"registration_token"`
+	BoardAutoJoin     string `yaml:"board_auto_join"`
 }
 
 // Profile represents a git/GitHub/SSH identity.
@@ -59,13 +66,13 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// discoverTeamSkills returns skill names for a team by reading entries from
-// the teams/{name}/skills/ directory. Entries may be directories or symlinks.
-func discoverTeamSkills(teamName string) ([]string, error) {
-	skillsDir := filepath.Join(env.configDir(), "teams", teamName, "skills")
+// discoverAgentSkills returns skill names for an agent by reading entries from
+// the agents/{name}/skills/ directory. Entries may be directories or symlinks.
+func discoverAgentSkills(agentName string) ([]string, error) {
+	skillsDir := filepath.Join(env.configDir(), "agents", agentName, "skills")
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
-		return nil, fmt.Errorf("team skills directory for %q: %w", teamName, err)
+		return nil, fmt.Errorf("agent skills directory for %q: %w", agentName, err)
 	}
 	var skills []string
 	for _, e := range entries {

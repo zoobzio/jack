@@ -159,6 +159,9 @@ type EventContextGetter func(roomID, eventID string) (string, error)
 // MessageFromReader reads messages starting from a pagination token.
 type MessageFromReader func(roomID, from string, limit int, dir string) (*Messages, error)
 
+// ReactionSender sends a reaction to an event.
+type ReactionSender func(roomID, eventID, key string) (string, error)
+
 // --- Additional response types ---
 
 // WhoAmIResponse is returned by the whoami endpoint.
@@ -313,6 +316,26 @@ func (c *Client) Send(roomID, message string) (string, error) {
 	path := fmt.Sprintf("/_matrix/client/v3/rooms/%s/send/m.room.message/%s", escapePathParam(roomID), txnID)
 	if err := c.put(path, body, &resp); err != nil {
 		return "", fmt.Errorf("send: %w", err)
+	}
+	return resp.EventID, nil
+}
+
+// SendReaction sends an m.reaction event targeting the given event.
+func (c *Client) SendReaction(roomID, eventID, key string) (string, error) {
+	txnID := fmt.Sprintf("%d", time.Now().UnixNano())
+	body := map[string]interface{}{
+		"m.relates_to": map[string]interface{}{
+			"rel_type": "m.annotation",
+			"event_id": eventID,
+			"key":      key,
+		},
+	}
+	var resp struct {
+		EventID string `json:"event_id"`
+	}
+	path := fmt.Sprintf("/_matrix/client/v3/rooms/%s/send/m.reaction/%s", escapePathParam(roomID), txnID)
+	if err := c.put(path, body, &resp); err != nil {
+		return "", fmt.Errorf("send reaction: %w", err)
 	}
 	return resp.EventID, nil
 }
@@ -623,16 +646,16 @@ func TokenFromEnv() (string, error) {
 	return "", fmt.Errorf("JACK_MSG_TOKEN not set and no .jack/env found")
 }
 
-// TeamFromEnv reads the team name. Checks JACK_TEAM env var first, then
+// AgentFromEnv reads the agent name. Checks JACK_AGENT env var first, then
 // falls back to .jack/env file.
-func TeamFromEnv() (string, error) {
-	if team := os.Getenv("JACK_TEAM"); team != "" {
-		return team, nil
+func AgentFromEnv() (string, error) {
+	if agent := os.Getenv("JACK_AGENT"); agent != "" {
+		return agent, nil
 	}
-	if team := envFromFile("JACK_TEAM"); team != "" {
-		return team, nil
+	if agent := envFromFile("JACK_AGENT"); agent != "" {
+		return agent, nil
 	}
-	return "", fmt.Errorf("JACK_TEAM not set and no .jack/env found")
+	return "", fmt.Errorf("JACK_AGENT not set and no .jack/env found")
 }
 
 // envFromFile walks up from CWD looking for .jack/env and reads a KEY=VALUE

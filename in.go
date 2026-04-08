@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/spf13/cobra"
 	"github.com/zoobzio/jack/msg"
 )
 
 func init() {
-	inCmd.Flags().StringP("team", "t", "", "team name")
+	inCmd.Flags().StringP("agent", "a", "", "agent name")
 	inCmd.Flags().StringP("project", "p", "", "project name")
 	rootCmd.AddCommand(inCmd)
 }
@@ -28,14 +29,14 @@ func defaultBoardProvisioner(token, sessionName string) error {
 var inCmd = &cobra.Command{
 	Use:   "in",
 	Short: "Enter a session",
-	Long:  "Attach to an existing session or create one.\nWith no arguments, interactively select a team and project.",
+	Long:  "Attach to an existing session or create one.\nWith no arguments, interactively select an agent and project.",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		team, _ := cmd.Flags().GetString("team")
+		agent, _ := cmd.Flags().GetString("agent")
 		project, _ := cmd.Flags().GetString("project")
-		return runIn(team, project,
+		return runIn(agent, project,
 			loadRegistry,
-			selectTeam, selectProject,
+			selectAgent, selectProject,
 			HasSession, CreateSession, AttachSession,
 			sshAdd, ageDecrypt,
 			defaultBoardProvisioner,
@@ -43,39 +44,39 @@ var inCmd = &cobra.Command{
 	},
 }
 
-func runIn(team, project string, loadReg RegistryLoader, selTeam TeamSelector, selProject ProjectSelector, hasSession SessionChecker, createSession SessionCreator, attach SessionAttacher, addKey KeyAdder, decrypt TokenDecrypter, provision BoardProvisioner) error {
+func runIn(agent, project string, loadReg RegistryLoader, selAgent AgentSelector, selProject ProjectSelector, hasSession SessionChecker, createSession SessionCreator, attach SessionAttacher, addKey KeyAdder, decrypt TokenDecrypter, provision BoardProvisioner) error {
 	reg, err := loadReg()
 	if err != nil {
 		return fmt.Errorf("loading registry: %w", err)
 	}
 
-	// Resolve team.
-	if team == "" {
-		teams := reg.Teams()
-		switch len(teams) {
+	// Resolve agent.
+	if agent == "" {
+		agents := reg.Agents()
+		switch len(agents) {
 		case 0:
 			return fmt.Errorf("no projects cloned — run jack clone first")
 		case 1:
-			team = teams[0]
+			agent = agents[0]
 		default:
-			t, err := selTeam(teams)
+			a, err := selAgent(agents)
 			if err != nil {
 				return err
 			}
-			team = t
+			agent = a
 		}
 	}
 
 	// Resolve project.
 	if project == "" {
-		repos := reg.ReposForTeam(team)
+		repos := reg.ReposForAgent(agent)
 		switch len(repos) {
 		case 0:
-			return fmt.Errorf("no projects cloned for team %q", team)
+			return fmt.Errorf("no projects cloned for agent %q", agent)
 		case 1:
 			project = repos[0]
 		default:
-			p, err := selProject(team, repos)
+			p, err := selProject(agent, repos)
 			if err != nil {
 				return err
 			}
@@ -83,8 +84,8 @@ func runIn(team, project string, loadReg RegistryLoader, selTeam TeamSelector, s
 		}
 	}
 
-	name := SessionName(team, project)
-	dir := filepath.Join(env.dataDir(), team, project)
+	name := SessionName(agent, project)
+	dir := filepath.Join(env.dataDir(), agent, project)
 
 	// If session exists, attach to it.
 	if hasSession(name) {
@@ -92,9 +93,9 @@ func runIn(team, project string, loadReg RegistryLoader, selTeam TeamSelector, s
 	}
 
 	// Create a new session.
-	profile, ok := cfg.Profiles[team]
+	profile, ok := cfg.Profiles[agent]
 	if !ok {
-		return fmt.Errorf("unknown team %q (no matching profile)", team)
+		return fmt.Errorf("unknown agent %q (no matching profile)", agent)
 	}
 
 	if profile.SSH.Key != "" {
@@ -116,7 +117,7 @@ func runIn(team, project string, loadReg RegistryLoader, selTeam TeamSelector, s
 	}
 
 	var ghToken string
-	ghAgePath := ghTokenAgePath(team)
+	ghAgePath := ghTokenAgePath(agent)
 	if _, err := os.Stat(ghAgePath); err == nil {
 		privKeyPath := expandHome(profile.SSH.Key)
 		t, err := decrypt(privKeyPath, ghAgePath)
@@ -127,20 +128,20 @@ func runIn(team, project string, loadReg RegistryLoader, selTeam TeamSelector, s
 	}
 
 	// Provision global board and announce presence (non-fatal).
-	if token != "" && provision != nil {
+	if token != "" && provision != nil && boardAutoJoinMatch(agent) {
 		if err := provision(token, name); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: global board provisioning failed: %v\n", err)
 		}
 	}
 
-	shellCmd := buildShellCmd(team, profile, dir, token, ghToken)
+	shellCmd := buildShellCmd(agent, profile, dir, token, ghToken)
 
 	// Write session env vars to a file so that commands spawned by Claude
 	// (which starts a fresh shell from the user's profile rather than
 	// inheriting the process environment) can still read them.
 	jackDir := filepath.Join(dir, ".jack")
 	_ = os.MkdirAll(jackDir, 0o750)
-	envContent := buildEnvFile(team, token, ghToken)
+	envContent := buildEnvFile(agent, token, ghToken)
 	if err := os.WriteFile(filepath.Join(jackDir, "env"), []byte(envContent), 0o600); err != nil {
 		return fmt.Errorf("writing env file: %w", err)
 	}
@@ -159,4 +160,19 @@ func runIn(team, project string, loadReg RegistryLoader, selTeam TeamSelector, s
 	}
 
 	return attach(name)
+}
+
+// boardAutoJoinMatch reports whether the agent name matches the configured
+// board_auto_join regex pattern. An empty pattern matches all agents.
+func boardAutoJoinMatch(agent string) bool {
+	pattern := cfg.Matrix.BoardAutoJoin
+	if pattern == "" {
+		return true
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: invalid board_auto_join pattern %q: %v\n", pattern, err)
+		return false
+	}
+	return re.MatchString(agent)
 }

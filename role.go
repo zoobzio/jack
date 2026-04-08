@@ -9,11 +9,11 @@ import (
 // FileLinker symlinks a file from src to dst.
 type FileLinker func(src, dst string) error
 
-// applyTeam provisions governance, orders, project, skill, and agent files into
+// applyAgent provisions governance, orders, project, skill, and agent files into
 // the repo's .claude directory. All files are symlinked so the jack config
 // directory remains the single source of truth.
-func applyTeam(teamName, repo, dir string, ln FileLinker) error {
-	skills, err := discoverTeamSkills(teamName)
+func applyAgent(agentName, repo, dir string, ln FileLinker) error {
+	skills, err := discoverAgentSkills(agentName)
 	if err != nil {
 		return err
 	}
@@ -31,10 +31,10 @@ func applyTeam(teamName, repo, dir string, ln FileLinker) error {
 		return fmt.Errorf("linking governance files: %w", err)
 	}
 
-	// 2. Team files — symlink all files from teams/{teamName}/ to .claude/
-	teamDir := filepath.Join(configDir, "teams", teamName)
-	if err := linkDirFiles(teamDir, claudeDir, ln); err != nil {
-		return fmt.Errorf("linking team files for %q: %w", teamName, err)
+	// 2. Agent files — symlink all files from agents/{agentName}/ to .claude/
+	agentDir := filepath.Join(configDir, "agents", agentName)
+	if err := linkDirFiles(agentDir, claudeDir, ln); err != nil {
+		return fmt.Errorf("linking agent files for %q: %w", agentName, err)
 	}
 
 	// 3. Project — symlink all files from projects/<repo>/ to .claude/
@@ -51,10 +51,11 @@ func applyTeam(teamName, repo, dir string, ln FileLinker) error {
 			return fmt.Errorf("creating commands dir: %w", err)
 		}
 		for _, skill := range skills {
-			src := filepath.Join(configDir, "teams", teamName, "skills", skill)
+			src := filepath.Join(configDir, "agents", agentName, "skills", skill)
 			resolved, err := filepath.EvalSymlinks(src)
 			if err != nil {
-				return fmt.Errorf("resolving skill %q: %w", skill, err)
+				// Skip broken symlinks (e.g. removed skill targets).
+				continue
 			}
 			dst := filepath.Join(commandsDir, skill)
 			if err := os.Symlink(resolved, dst); err != nil {
@@ -63,24 +64,12 @@ func applyTeam(teamName, repo, dir string, ln FileLinker) error {
 		}
 	}
 
-	// 5. Agents — symlink from teams/{teamName}/agents/ to .claude/agents/
-	agentsSrc := filepath.Join(configDir, "teams", teamName, "agents")
-	if entries, err := os.ReadDir(agentsSrc); err == nil && len(entries) > 0 {
-		agentsDst := filepath.Join(claudeDir, "agents")
-		if err := os.MkdirAll(agentsDst, 0o750); err != nil {
-			return fmt.Errorf("creating agents dir: %w", err)
-		}
-		if err := linkDirFiles(agentsSrc, agentsDst, ln); err != nil {
-			return fmt.Errorf("linking agents for team %q: %w", teamName, err)
-		}
-	}
-
 	return nil
 }
 
 // linkDirFiles symlinks all files (not subdirectories) from srcDir into dstDir.
 // If a file already exists at dst it is removed before linking, allowing
-// higher-priority sources (project > team > governance) to override.
+// higher-priority sources (project > agent > governance) to override.
 func linkDirFiles(srcDir, dstDir string, ln FileLinker) error {
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
@@ -100,9 +89,9 @@ func linkDirFiles(srcDir, dstDir string, ln FileLinker) error {
 	return nil
 }
 
-// validateGovernance checks that governance, team skills, orders, and project
+// validateGovernance checks that governance, agent skills, orders, and project
 // files exist before any cloning begins.
-func validateGovernance(configDir, teamName, repo string) error {
+func validateGovernance(configDir, agentName, repo string) error {
 	// Governance directory must exist and be non-empty.
 	govDir := filepath.Join(configDir, "governance")
 	entries, err := os.ReadDir(govDir)
@@ -120,16 +109,10 @@ func validateGovernance(configDir, teamName, repo string) error {
 		return fmt.Errorf("governance directory is empty or missing")
 	}
 
-	// Team skills directory must exist.
-	teamSkillsDir := filepath.Join(configDir, "teams", teamName, "skills")
-	if info, err := os.Stat(teamSkillsDir); err != nil || !info.IsDir() {
-		return fmt.Errorf("team skills directory not found: teams/%s/skills/", teamName)
-	}
-
-	// Team ORDERS.md must exist.
-	ordersPath := filepath.Join(configDir, "teams", teamName, "ORDERS.md")
-	if _, err := os.Stat(ordersPath); err != nil {
-		return fmt.Errorf("ORDERS.md not found in teams/%s/", teamName)
+	// Agent skills directory must exist.
+	agentSkillsDir := filepath.Join(configDir, "agents", agentName, "skills")
+	if info, err := os.Stat(agentSkillsDir); err != nil || !info.IsDir() {
+		return fmt.Errorf("agent skills directory not found: agents/%s/skills/", agentName)
 	}
 
 	// Project directory must exist.

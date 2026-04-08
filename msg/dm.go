@@ -21,7 +21,7 @@ var dmSendCmd = &cobra.Command{
 	Short: "Send a direct message to a user",
 	Long:  "Send a direct message by username. Creates a DM room if one doesn't exist.",
 	Args:  cobra.MinimumNArgs(2),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		token, err := TokenFromEnv()
 		if err != nil {
 			return err
@@ -35,7 +35,10 @@ var dmSendCmd = &cobra.Command{
 			}
 			message = strings.TrimRight(string(data), "\n")
 		}
-		return runDMSend(args[0], message, client.WhoAmI, client.GetDirectRooms, client.SetDirectRooms, client.Send, client.CreateDMRoom, client.GetProfile, client.SetRoomAlias, client.ResolveAlias, client.Join)
+		if err := runDMSend(args[0], message, client.WhoAmI, client.GetDirectRooms, client.SetDirectRooms, client.Send, client.CreateDMRoom, client.GetProfile, client.SetRoomAlias, client.ResolveAlias, client.Join); err != nil {
+			return err
+		}
+		return postCheck(cmd)
 	},
 }
 
@@ -58,6 +61,7 @@ var dmReadCmd = &cobra.Command{
 func init() {
 	dmReadCmd.Flags().IntP("limit", "n", 20, "number of messages to retrieve")
 	dmReadCmd.Flags().Bool("json", false, "output messages as JSON")
+	addCheckFlags(dmSendCmd)
 	dmCmd.AddCommand(dmSendCmd)
 	dmCmd.AddCommand(dmReadCmd)
 	Cmd.AddCommand(dmCmd)

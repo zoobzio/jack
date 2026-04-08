@@ -40,7 +40,7 @@ func TestBuildShellCmd(t *testing.T) {
 	jtesting.AssertEqual(t, strings.Contains(cmd, `git config user.email "test@example.com"`), true)
 	jtesting.AssertEqual(t, strings.Contains(cmd, "claude --dangerously-skip-permissions --teammate-mode in-process"), true)
 	jtesting.AssertEqual(t, strings.Contains(cmd, " && "), true)
-	jtesting.AssertEqual(t, strings.Contains(cmd, "export JACK_TEAM=blue"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd, "export JACK_AGENT=blue"), true)
 }
 
 func TestBuildShellCmdNoGitConfig(t *testing.T) {
@@ -82,7 +82,7 @@ func TestBuildShellCmdWithBothTokens(t *testing.T) {
 
 func TestBuildEnvFile(t *testing.T) {
 	content := buildEnvFile("blue", "tok_123", "ghp_abc")
-	jtesting.AssertEqual(t, strings.Contains(content, "JACK_TEAM=blue\n"), true)
+	jtesting.AssertEqual(t, strings.Contains(content, "JACK_AGENT=blue\n"), true)
 	jtesting.AssertEqual(t, strings.Contains(content, "JACK_MSG_TOKEN=tok_123\n"), true)
 	jtesting.AssertEqual(t, strings.Contains(content, "GH_TOKEN=ghp_abc\n"), true)
 }
@@ -91,4 +91,3 @@ func TestBuildEnvFileEmpty(t *testing.T) {
 	content := buildEnvFile("", "", "")
 	jtesting.AssertEqual(t, content, "\n")
 }
-

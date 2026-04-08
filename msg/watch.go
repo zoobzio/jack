@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	watchCmd.Flags().Int("timeout", 30, "seconds to wait before giving up")
+	watchCmd.Flags().Int("timeout", 0, "seconds to watch before exiting (0 = indefinite)")
 	watchCmd.Flags().BoolP("follow", "f", false, "stream messages continuously")
 	watchCmd.Flags().Bool("json", false, "output messages as JSON")
 	Cmd.AddCommand(watchCmd)
@@ -74,7 +74,7 @@ const pollInterval = 5
 
 func runWatch(timeout int, follow, jsonOut bool, sync syncFunc, getInfo RoomInfoGetter) error {
 	ctx := context.Background()
-	if !follow && timeout > 0 {
+	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second+5*time.Second)
 		defer cancel()
@@ -108,8 +108,8 @@ func runWatch(timeout int, follow, jsonOut bool, sync syncFunc, getInfo RoomInfo
 	for {
 		resp, err = sync(ctx, resp.NextBatch, pollInterval, "")
 		if err != nil {
-			if ctx.Err() != nil && !follow {
-				return fmt.Errorf("no new messages within timeout")
+			if ctx.Err() != nil {
+				return nil
 			}
 			return fmt.Errorf("sync: %w", err)
 		}
@@ -164,13 +164,11 @@ func runWatch(timeout int, follow, jsonOut bool, sync syncFunc, getInfo RoomInfo
 			}
 		}
 
-		if !follow {
-			if found {
-				return nil
-			}
-			if ctx.Err() != nil {
-				return fmt.Errorf("no new messages within timeout")
-			}
+		if !follow && found {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 	}
 }

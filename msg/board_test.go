@@ -36,7 +36,7 @@ func TestRunBoardPostSuccess(t *testing.T) {
 		sentMsg = message
 		return "$evt1", nil
 	}
-	err := runBoardPost("board-blue", "Construct board for team blue", "board-blue", "hello board", stubResolver("!board:localhost"), sender, stubCreator("!board:localhost"))
+	err := runBoardPost("board-blue", "Construct board for agent blue", "board-blue", "hello board", stubResolver("!board:localhost"), sender, stubCreator("!board:localhost"))
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, sentRoom, "!board:localhost")
 	jtesting.AssertEqual(t, sentMsg, "hello board")
@@ -50,7 +50,7 @@ func TestRunBoardPostCreatesRoom(t *testing.T) {
 		return &Room{RoomID: "!new:localhost"}, nil
 	}
 	sender := func(_, _ string) (string, error) { return "$evt1", nil }
-	err := runBoardPost("board-blue", "Construct board for team blue", "board-blue", "first post", failResolver(), sender, creator)
+	err := runBoardPost("board-blue", "Construct board for agent blue", "board-blue", "first post", failResolver(), sender, creator)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, created, true)
 }
@@ -64,7 +64,7 @@ func TestRunBoardReadSuccess(t *testing.T) {
 			},
 		}, nil
 	}
-	err := runBoardRead("board-blue", "Construct board for team blue", "board-blue", 10, false, "", stubResolver("!board:localhost"), reader, stubCreator("!board:localhost"))
+	err := runBoardRead("board-blue", "Construct board for agent blue", "board-blue", 10, false, "", stubResolver("!board:localhost"), reader, stubCreator("!board:localhost"))
 	jtesting.AssertNoError(t, err)
 }
 
@@ -77,7 +77,7 @@ func TestRunBoardReadJSON(t *testing.T) {
 			},
 		}, nil
 	}
-	err := runBoardRead("board-blue", "Construct board for team blue", "board-blue", 10, true, "", stubResolver("!board:localhost"), reader, stubCreator("!board:localhost"))
+	err := runBoardRead("board-blue", "Construct board for agent blue", "board-blue", 10, true, "", stubResolver("!board:localhost"), reader, stubCreator("!board:localhost"))
 	jtesting.AssertNoError(t, err)
 }
 
@@ -104,7 +104,7 @@ func TestRunBoardWatchSuccess(t *testing.T) {
 			},
 		}, nil
 	}
-	err := runBoardWatch("board-blue", "Construct board for team blue", "board-blue", 5, false, stubResolver("!board:localhost"), syncer, stubCreator("!board:localhost"))
+	err := runBoardWatch("board-blue", "Construct board for agent blue", "board-blue", 5, false, stubResolver("!board:localhost"), syncer, stubCreator("!board:localhost"))
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, callCount, 2)
 }
@@ -114,7 +114,7 @@ func TestRunBoardWatchNoMessages(t *testing.T) {
 	syncer := func(_ context.Context, _ string, _ int, _ string) (*SyncResponse, error) {
 		return &SyncResponse{NextBatch: "batch_1"}, nil
 	}
-	err := runBoardWatch("board-blue", "Construct board for team blue", "board-blue", 1, false, stubResolver("!board:localhost"), syncer, stubCreator("!board:localhost"))
+	err := runBoardWatch("board-blue", "Construct board for agent blue", "board-blue", 1, false, stubResolver("!board:localhost"), syncer, stubCreator("!board:localhost"))
 	jtesting.AssertError(t, err)
 }
 
@@ -134,7 +134,7 @@ func TestRunBoardWatchFollow(t *testing.T) {
 		// Return an error to break the loop for testing.
 		return nil, fmt.Errorf("done")
 	}
-	err := runBoardWatch("board-blue", "Construct board for team blue", "board-blue", 1, true, stubResolver("!board:localhost"), syncer, stubCreator("!board:localhost"))
+	err := runBoardWatch("board-blue", "Construct board for agent blue", "board-blue", 1, true, stubResolver("!board:localhost"), syncer, stubCreator("!board:localhost"))
 	jtesting.AssertError(t, err)
 	jtesting.AssertEqual(t, callCount, 4)
 }
