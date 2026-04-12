@@ -10,8 +10,8 @@ import (
 type TaggedField struct {
 	Value          string   `json:"value"`
 	Classification string   `json:"classification"`
-	Score          float64  `json:"score,omitempty"`
 	Flags          []string `json:"flags,omitempty"`
+	Score          float64  `json:"score,omitempty"`
 }
 
 // Tag classifies a string and returns a tagged field.

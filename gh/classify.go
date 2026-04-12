@@ -14,9 +14,9 @@ import (
 // Classification is the result from the classifier service.
 type Classification struct {
 	Classification string   `json:"classification"`
-	Score          float64  `json:"score"`
-	Flags          []string `json:"flags"`
 	Direction      string   `json:"direction"`
+	Flags          []string `json:"flags"`
+	Score          float64  `json:"score"`
 }
 
 // ClassifyRequest is sent to the classifier service.

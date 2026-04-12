@@ -12,7 +12,8 @@ func ghExec(args ...string) ([]byte, error) {
 	cmd := exec.Command("gh", args...)
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		exitErr := &exec.ExitError{}
+		if errors.As(err, &exitErr) {
 			return nil, fmt.Errorf("gh %s: %s", strings.Join(args, " "), string(exitErr.Stderr))
 		}
 		return nil, fmt.Errorf("gh %s: %w", strings.Join(args, " "), err)

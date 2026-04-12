@@ -66,14 +66,14 @@ func init() {
 // --- raw gh JSON types ---
 
 type ghPR struct {
-	Number   int         `json:"number"`
 	Title    string      `json:"title"`
 	Body     string      `json:"body"`
 	State    string      `json:"state"`
-	Labels   []ghLabel   `json:"labels"`
 	Author   ghUser      `json:"author"`
+	Labels   []ghLabel   `json:"labels"`
 	Comments []ghComment `json:"comments"`
 	Reviews  []ghReview  `json:"reviews"`
+	Number   int         `json:"number"`
 }
 
 type ghReview struct {
@@ -85,28 +85,28 @@ type ghReview struct {
 // --- classified output types ---
 
 type classifiedPR struct {
-	Number   int               `json:"number"`
-	Title    TaggedField       `json:"title"`
-	Body     TaggedField       `json:"body"`
-	State    string            `json:"state"`
-	Labels   []string          `json:"labels"`
-	Author   string            `json:"author"`
-	Comments []TaggedComment   `json:"comments"`
+	State    string             `json:"state"`
+	Author   string             `json:"author"`
+	Title    TaggedField        `json:"title"`
+	Body     TaggedField        `json:"body"`
+	Labels   []string           `json:"labels"`
+	Comments []TaggedComment    `json:"comments"`
 	Reviews  []classifiedReview `json:"reviews"`
+	Number   int                `json:"number"`
 }
 
 type classifiedReview struct {
 	Author string      `json:"author"`
-	Body   TaggedField `json:"body"`
 	State  string      `json:"state"`
+	Body   TaggedField `json:"body"`
 }
 
 type classifiedPRSummary struct {
-	Number int         `json:"number"`
-	Title  TaggedField `json:"title"`
 	State  string      `json:"state"`
-	Labels []string    `json:"labels"`
 	Author string      `json:"author"`
+	Title  TaggedField `json:"title"`
+	Labels []string    `json:"labels"`
+	Number int         `json:"number"`
 }
 
 // --- implementation ---

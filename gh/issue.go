@@ -64,13 +64,13 @@ func init() {
 // --- raw gh JSON types ---
 
 type ghIssue struct {
-	Number   int         `json:"number"`
 	Title    string      `json:"title"`
 	Body     string      `json:"body"`
 	State    string      `json:"state"`
-	Labels   []ghLabel   `json:"labels"`
 	Author   ghUser      `json:"author"`
+	Labels   []ghLabel   `json:"labels"`
 	Comments []ghComment `json:"comments"`
+	Number   int         `json:"number"`
 }
 
 type ghLabel struct {
@@ -89,21 +89,21 @@ type ghComment struct {
 // --- classified output types ---
 
 type classifiedIssue struct {
-	Number   int              `json:"number"`
-	Title    TaggedField      `json:"title"`
-	Body     TaggedField      `json:"body"`
-	State    string           `json:"state"`
-	Labels   []string         `json:"labels"`
-	Author   string           `json:"author"`
-	Comments []TaggedComment  `json:"comments"`
+	State    string          `json:"state"`
+	Author   string          `json:"author"`
+	Title    TaggedField     `json:"title"`
+	Body     TaggedField     `json:"body"`
+	Labels   []string        `json:"labels"`
+	Comments []TaggedComment `json:"comments"`
+	Number   int             `json:"number"`
 }
 
 type classifiedIssueSummary struct {
-	Number int         `json:"number"`
-	Title  TaggedField `json:"title"`
 	State  string      `json:"state"`
-	Labels []string    `json:"labels"`
 	Author string      `json:"author"`
+	Title  TaggedField `json:"title"`
+	Labels []string    `json:"labels"`
+	Number int         `json:"number"`
 }
 
 // --- implementation ---
