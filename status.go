@@ -19,14 +19,14 @@ func init() {
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show team and session status",
+	Short: "Show agent and session status",
 	Args:  cobra.NoArgs,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		return runStatus(os.Stdout, loadRegistry, ListSessions)
+		return runStatus(os.Stdout, loadRegistry, ListSessions, DockerCheck)
 	},
 }
 
-func runStatus(w io.Writer, loadReg RegistryLoader, list Lister) error {
+func runStatus(w io.Writer, loadReg RegistryLoader, list Lister, checkContainer ContainerChecker) error {
 	reg, err := loadReg()
 	if err != nil {
 		return fmt.Errorf("loading registry: %w", err)
@@ -43,34 +43,64 @@ func runStatus(w io.Writer, loadReg RegistryLoader, list Lister) error {
 		sessionMap[s.Name] = s
 	}
 
-	teams := reg.Teams()
-	if len(teams) == 0 {
+	agents := reg.Agents()
+	if len(agents) == 0 {
 		_, _ = fmt.Fprintln(w, "no projects cloned")
 		return nil
 	}
 
-	for i, team := range teams {
+	for i, agent := range agents {
 		if i > 0 {
 			_, _ = fmt.Fprintln(w)
 		}
-		_, _ = fmt.Fprintln(w, team)
+		_, _ = fmt.Fprintf(w, "%s %s\n", agent, certStatusLabel(agent))
 
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		_, _ = fmt.Fprintln(tw, "PROJECT\tSESSION\tSTATUS")
+		_, _ = fmt.Fprintln(tw, "PROJECT\tSESSION\tSTATUS\tCONTAINER")
 
-		for _, entry := range reg.ForTeam(team) {
-			name := SessionName(team, entry.Repo)
+		for _, entry := range reg.ForAgent(agent) {
+			name := SessionName(agent, entry.Repo)
+			containerName := ContainerName(agent, entry.Repo)
+			running, exists := checkContainer(containerName)
+			cStatus := containerStatus(running, exists)
+
 			if s, ok := sessionMap[name]; ok {
-				info := SessionInfo{TmuxSession: s, Team: team, Repo: entry.Repo}
-				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", entry.Repo, name, sessionStatus(info))
+				info := SessionInfo{TmuxSession: s, Agent: agent, Repo: entry.Repo}
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", entry.Repo, name, sessionStatus(info), cStatus)
 			} else {
-				_, _ = fmt.Fprintf(tw, "%s\t-\tnot running\n", entry.Repo)
+				_, _ = fmt.Fprintf(tw, "%s\t-\tnot running\t%s\n", entry.Repo, cStatus)
 			}
 		}
 		_ = tw.Flush()
 	}
 
 	return nil
+}
+
+func certStatusLabel(agent string) string {
+	if !hasCert(agent) {
+		return "(no cert)"
+	}
+	expiry, err := certExpiry(agent)
+	if err != nil {
+		return "(cert error)"
+	}
+	remaining := time.Until(expiry)
+	if remaining <= 0 {
+		return "(cert expired)"
+	}
+	return fmt.Sprintf("(cert expires in %s)", formatDuration(remaining))
+}
+
+func containerStatus(running, exists bool) string {
+	switch {
+	case running:
+		return "running"
+	case exists:
+		return "stopped"
+	default:
+		return "-"
+	}
 }
 
 func sessionStatus(info SessionInfo) string {
