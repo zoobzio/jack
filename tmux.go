@@ -40,9 +40,14 @@ type SessionInfo struct {
 	TmuxSession
 }
 
-// SessionName builds the canonical tmux session name for an agent and repo.
-func SessionName(agent, repo string) string {
-	return agent + "-" + repo
+// SessionName builds the canonical tmux session name for an agent, repo,
+// and optional worktree branch. If branch is empty, returns the main session name.
+func SessionName(agent, repo, branch string) string {
+	name := agent + "-" + repo
+	if branch != "" {
+		name += "-" + WorktreeHash(branch)
+	}
+	return name
 }
 
 // ListSessions calls tmux list-sessions and returns all tmux sessions.
