@@ -74,7 +74,7 @@ func runClone(ctx context.Context, url string, agents []string, force bool, clon
 				continue
 			}
 			// Kill the session if it's running.
-			name := SessionName(agentName, repo)
+			name := SessionName(agentName, repo, "")
 			if hasSession(name) {
 				if err := kill(name); err != nil {
 					return fmt.Errorf("killing session %s: %w", name, err)

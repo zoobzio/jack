@@ -11,6 +11,7 @@ import (
 func init() {
 	outCmd.Flags().StringP("agent", "a", "", "agent name")
 	outCmd.Flags().StringP("project", "p", "", "project name")
+	outCmd.Flags().StringP("worktree", "w", "", "branch name for worktree")
 	rootCmd.AddCommand(outCmd)
 }
 
@@ -27,7 +28,7 @@ func parseSessionName(name string) (agent, project string) {
 var outCmd = &cobra.Command{
 	Use:   "out [name]",
 	Short: "Terminate a session",
-	Long:  "Terminate a session by name or by --agent and --project flags.",
+	Long:  "Terminate a session by name or by --agent, --project, and optional --worktree flags.\nWorktree sessions are killed but the worktree is left on disk.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var name string
@@ -36,13 +37,14 @@ var outCmd = &cobra.Command{
 		}
 		agent, _ := cmd.Flags().GetString("agent")
 		project, _ := cmd.Flags().GetString("project")
-		return runOut(name, agent, project, HasSession, KillSession, DockerStop)
+		branch, _ := cmd.Flags().GetString("worktree")
+		return runOut(name, agent, project, branch, HasSession, KillSession, DockerStop)
 	},
 }
 
-func runOut(name, agent, project string, hasSession SessionChecker, kill SessionKiller, stopContainer ContainerStopper) error {
+func runOut(name, agent, project, branch string, hasSession SessionChecker, kill SessionKiller, stopContainer ContainerStopper) error {
 	if name == "" && agent != "" && project != "" {
-		name = SessionName(agent, project)
+		name = SessionName(agent, project, branch)
 	}
 	if name == "" {
 		return fmt.Errorf("specify a session name or both --agent and --project")
@@ -55,14 +57,17 @@ func runOut(name, agent, project string, hasSession SessionChecker, kill Session
 		return err
 	}
 
-	// Stop the Docker container (non-fatal — may not exist).
-	if agent == "" || project == "" {
-		agent, project = parseSessionName(name)
-	}
-	if agent != "" && project != "" && stopContainer != nil {
-		containerName := ContainerName(agent, project)
-		if err := stopContainer(containerName); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not stop container %s: %v\n", containerName, err)
+	// Only stop the container if this is the main session (no worktree).
+	// Worktree sessions share the container with the main session.
+	if branch == "" {
+		if agent == "" || project == "" {
+			agent, project = parseSessionName(name)
+		}
+		if agent != "" && project != "" && stopContainer != nil {
+			containerName := ContainerName(agent, project)
+			if err := stopContainer(containerName); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not stop container %s: %v\n", containerName, err)
+			}
 		}
 	}
 
