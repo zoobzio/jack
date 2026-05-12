@@ -1,26 +1,29 @@
 package jack
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 )
 
-// Env holds path overrides loaded from environment variables via fig.
+// Env holds path overrides loaded from environment variables.
 type Env struct {
-	ConfigDir string `env:"JACK_CONFIG_DIR" default:"~/.config/jack"`
-	DataDir   string `env:"JACK_DATA_DIR"   default:"~/.jack"`
+	ConfigDir string
+	DataDir   string
 }
 
-// Validate ensures the configured directories are valid paths.
-func (e *Env) Validate() error {
-	if e.ConfigDir == "" {
-		return fmt.Errorf("config dir must not be empty")
+// loadEnv reads environment variables and returns an Env with defaults.
+func loadEnv() Env {
+	e := Env{
+		ConfigDir: "~/.config/jack",
+		DataDir:   "~/.jack",
 	}
-	if e.DataDir == "" {
-		return fmt.Errorf("data dir must not be empty")
+	if v := os.Getenv("JACK_CONFIG_DIR"); v != "" {
+		e.ConfigDir = v
 	}
-	return nil
+	if v := os.Getenv("JACK_DATA_DIR"); v != "" {
+		e.DataDir = v
+	}
+	return e
 }
 
 // configDir returns the expanded config directory path.

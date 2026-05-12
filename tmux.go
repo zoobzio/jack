@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+// SessionChecker reports whether a tmux session exists.
+type SessionChecker func(string) bool
+
+// SessionCreator creates a detached tmux session.
+type SessionCreator func(name, dir, shellCmd string) error
+
+// SessionAttacher attaches to a tmux session.
+type SessionAttacher func(name string) error
+
+// SessionKiller terminates a tmux session.
+type SessionKiller func(name string) error
+
 // TmuxSession represents a single tmux session as reported by tmux.
 type TmuxSession struct {
 	Name     string
@@ -21,16 +33,16 @@ type TmuxSession struct {
 	Windows  int
 }
 
-// SessionInfo is a parsed jack-managed session with team and repo extracted.
+// SessionInfo is a parsed jack-managed session with agent and repo extracted.
 type SessionInfo struct {
-	Team string
-	Repo string
+	Agent string
+	Repo  string
 	TmuxSession
 }
 
-// SessionName builds the canonical tmux session name for a team and repo.
-func SessionName(team, repo string) string {
-	return team + "-" + repo
+// SessionName builds the canonical tmux session name for an agent and repo.
+func SessionName(agent, repo string) string {
+	return agent + "-" + repo
 }
 
 // ListSessions calls tmux list-sessions and returns all tmux sessions.
