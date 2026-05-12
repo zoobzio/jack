@@ -15,21 +15,21 @@ func TestRunStatusEmptyRegistry(t *testing.T) {
 	var buf bytes.Buffer
 	err := runStatus(&buf, stubRegistry(), func() ([]TmuxSession, error) {
 		return nil, nil
-	})
+	}, noopContainerChecker)
 	jtesting.AssertNoError(t, err)
 	jtesting.AssertEqual(t, strings.Contains(buf.String(), "no projects cloned"), true)
 }
 
 func TestRunStatusNoSessions(t *testing.T) {
 	reg := stubRegistry(
-		RegistryEntry{Team: "blue", Repo: "vicky"},
-		RegistryEntry{Team: "red", Repo: "flux"},
+		RegistryEntry{Agent: "blue", Repo: "vicky"},
+		RegistryEntry{Agent: "red", Repo: "flux"},
 	)
 
 	var buf bytes.Buffer
 	err := runStatus(&buf, reg, func() ([]TmuxSession, error) {
 		return nil, nil
-	})
+	}, noopContainerChecker)
 	jtesting.AssertNoError(t, err)
 
 	output := buf.String()
@@ -40,9 +40,9 @@ func TestRunStatusNoSessions(t *testing.T) {
 
 func TestRunStatusWithSessions(t *testing.T) {
 	reg := stubRegistry(
-		RegistryEntry{Team: "blue", Repo: "vicky"},
-		RegistryEntry{Team: "blue", Repo: "flux"},
-		RegistryEntry{Team: "red", Repo: "sentinel"},
+		RegistryEntry{Agent: "blue", Repo: "vicky"},
+		RegistryEntry{Agent: "blue", Repo: "flux"},
+		RegistryEntry{Agent: "red", Repo: "sentinel"},
 	)
 
 	var buf bytes.Buffer
@@ -73,18 +73,24 @@ func TestRunStatusWithSessions(t *testing.T) {
 				Windows:  1,
 			},
 		}, nil
-	})
+	}, noopContainerChecker)
 	jtesting.AssertNoError(t, err)
 
 	output := buf.String()
-	// Blue team projects.
 	jtesting.AssertEqual(t, strings.Contains(output, "blue-vicky"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "blue-flux"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "attached"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "active"), true)
-	// Red team project not running.
 	jtesting.AssertEqual(t, strings.Contains(output, "red"), true)
 	jtesting.AssertEqual(t, strings.Contains(output, "not running"), true)
 	// Non-jack session filtered out.
 	jtesting.AssertEqual(t, strings.Contains(output, "personal"), false)
+	// Container column present.
+	jtesting.AssertEqual(t, strings.Contains(output, "CONTAINER"), true)
+}
+
+func TestContainerStatus(t *testing.T) {
+	jtesting.AssertEqual(t, containerStatus(true, true), "running")
+	jtesting.AssertEqual(t, containerStatus(false, true), "stopped")
+	jtesting.AssertEqual(t, containerStatus(false, false), "-")
 }

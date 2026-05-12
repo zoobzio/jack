@@ -1,162 +1,170 @@
 package jack
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/zoobzio/jack/msg"
 )
 
 func init() {
-	inCmd.Flags().StringP("team", "t", "", "team name")
+	inCmd.Flags().StringP("agent", "a", "", "agent name")
 	inCmd.Flags().StringP("project", "p", "", "project name")
 	rootCmd.AddCommand(inCmd)
-}
-
-// BoardProvisioner joins the global board and announces presence.
-type BoardProvisioner func(token, sessionName string) error
-
-func defaultBoardProvisioner(token, sessionName string) error {
-	if err := msg.ProvisionGlobalBoard(token); err != nil {
-		return err
-	}
-	return msg.AnnounceOnBoard(token, fmt.Sprintf("%s jacked in", sessionName))
 }
 
 var inCmd = &cobra.Command{
 	Use:   "in",
 	Short: "Enter a session",
-	Long:  "Attach to an existing session or create one.\nWith no arguments, interactively select a team and project.",
+	Long:  "Attach to an existing session or create one.\nWith no arguments, interactively select an agent and project.",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		team, _ := cmd.Flags().GetString("team")
+		agent, _ := cmd.Flags().GetString("agent")
 		project, _ := cmd.Flags().GetString("project")
-		return runIn(team, project,
+		return runIn(agent, project,
 			loadRegistry,
-			selectTeam, selectProject,
+			selectAgent, selectProject,
 			HasSession, CreateSession, AttachSession,
-			sshAdd, ageDecrypt,
-			defaultBoardProvisioner,
+			DockerRun, DockerExec, DockerStop,
 		)
 	},
 }
 
-func runIn(team, project string, loadReg RegistryLoader, selTeam TeamSelector, selProject ProjectSelector, hasSession SessionChecker, createSession SessionCreator, attach SessionAttacher, addKey KeyAdder, decrypt TokenDecrypter, provision BoardProvisioner) error {
+func runIn(agent, project string, loadReg RegistryLoader, selAgent AgentSelector, selProject ProjectSelector, hasSession SessionChecker, createSession SessionCreator, attach SessionAttacher, runContainer ContainerRunner, execContainer ContainerExecer, stopContainer ContainerStopper) error {
 	reg, err := loadReg()
 	if err != nil {
 		return fmt.Errorf("loading registry: %w", err)
 	}
 
-	// Resolve team.
-	if team == "" {
-		teams := reg.Teams()
-		switch len(teams) {
+	// Resolve agent.
+	if agent == "" {
+		agents := reg.Agents()
+		switch len(agents) {
 		case 0:
 			return fmt.Errorf("no projects cloned — run jack clone first")
 		case 1:
-			team = teams[0]
+			agent = agents[0]
 		default:
-			t, err := selTeam(teams)
-			if err != nil {
-				return err
+			a, selErr := selAgent(agents)
+			if selErr != nil {
+				return selErr
 			}
-			team = t
+			agent = a
 		}
 	}
 
 	// Resolve project.
 	if project == "" {
-		repos := reg.ReposForTeam(team)
+		repos := reg.ReposForAgent(agent)
 		switch len(repos) {
 		case 0:
-			return fmt.Errorf("no projects cloned for team %q", team)
+			return fmt.Errorf("no projects cloned for agent %q", agent)
 		case 1:
 			project = repos[0]
 		default:
-			p, err := selProject(team, repos)
-			if err != nil {
-				return err
+			p, selErr := selProject(agent, repos)
+			if selErr != nil {
+				return selErr
 			}
 			project = p
 		}
 	}
 
-	name := SessionName(team, project)
-	dir := filepath.Join(env.dataDir(), team, project)
+	name := SessionName(agent, project)
+	dir := filepath.Join(env.dataDir(), agent, project)
 
 	// If session exists, attach to it.
 	if hasSession(name) {
 		return attach(name)
 	}
 
-	// Create a new session.
-	profile, ok := cfg.Profiles[team]
+	// Verify agent exists in config.
+	profile, ok := cfg.Profiles[agent]
 	if !ok {
-		return fmt.Errorf("unknown team %q (no matching profile)", team)
+		return fmt.Errorf("unknown agent %q (no matching profile)", agent)
 	}
 
-	if profile.SSH.Key != "" {
-		key := expandHome(profile.SSH.Key)
-		if err := addKey(key); err != nil {
-			return fmt.Errorf("ssh-add %s: %w", key, err)
+	// Renew agent certificate if expiring soon.
+	if cfg.CA.URL != "" && certNeedsRenewal(agent, renewThreshold) {
+		if renewErr := renewCert(context.Background(), agent); renewErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: cert renewal failed for %s: %v\n", agent, renewErr)
 		}
 	}
 
-	var token string
-	agePath := tokenAgePath(dir)
-	if _, err := os.Stat(agePath); err == nil {
-		privKeyPath := expandHome(profile.SSH.Key)
-		t, err := decrypt(privKeyPath, agePath)
-		if err != nil {
-			return fmt.Errorf("decrypting token: %w", err)
+	// Sync Claude OAuth credentials from keychain to disk so the
+	// container (which cannot access the macOS keychain) can authenticate.
+	if err := syncClaudeCredentials(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not sync claude credentials: %v\n", err)
+	}
+
+	// Start the container with jack config mounted read-only for setup scripts.
+	containerName := ContainerName(agent, project)
+	mounts := SessionMounts(profile, agent, dir)
+	mounts = append(mounts, Mount{
+		Source:   env.configDir(),
+		Target:  "/home/jack/.config/jack",
+		ReadOnly: true,
+	})
+	volumes := []Volume{ToolsVolume(agent, project)}
+	envVars := SessionEnv(profile, agent)
+
+	if err := runContainer(containerName, mounts, volumes, envVars); err != nil {
+		return fmt.Errorf("starting container: %w", err)
+	}
+
+	// Run setup scripts in order: global → agent → project.
+	// Each is optional — skip if the file doesn't exist on the host.
+	scripts := setupScripts(agent, project)
+	for _, s := range scripts {
+		if _, err := os.Stat(s.hostPath); err != nil {
+			continue
 		}
-		token = t
-	}
-
-	var ghToken string
-	ghAgePath := ghTokenAgePath(team)
-	if _, err := os.Stat(ghAgePath); err == nil {
-		privKeyPath := expandHome(profile.SSH.Key)
-		t, err := decrypt(privKeyPath, ghAgePath)
-		if err != nil {
-			return fmt.Errorf("decrypting github token: %w", err)
-		}
-		ghToken = t
-	}
-
-	// Provision global board and announce presence (non-fatal).
-	if token != "" && provision != nil {
-		if err := provision(token, name); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: global board provisioning failed: %v\n", err)
+		fmt.Printf("running %s...\n", s.label)
+		if err := execContainer(containerName, []string{"sh", s.containerPath}); err != nil {
+			_ = stopContainer(containerName)
+			return fmt.Errorf("running %s: %w", s.label, err)
 		}
 	}
 
-	shellCmd := buildShellCmd(team, profile, dir, token, ghToken)
+	// Build the tmux command as docker exec into the container.
+	shellCmd := "exec claude --dangerously-skip-permissions"
+	tmuxCmd := DockerExecCmd(containerName, shellCmd)
 
-	// Write session env vars to a file so that commands spawned by Claude
-	// (which starts a fresh shell from the user's profile rather than
-	// inheriting the process environment) can still read them.
-	jackDir := filepath.Join(dir, ".jack")
-	_ = os.MkdirAll(jackDir, 0o750)
-	envContent := buildEnvFile(team, token, ghToken)
-	if err := os.WriteFile(filepath.Join(jackDir, "env"), []byte(envContent), 0o600); err != nil {
-		return fmt.Errorf("writing env file: %w", err)
-	}
-
-	// Write to a script file so tmux doesn't have to handle long inline
-	// commands. Capture stderr to a log file for diagnostics.
-	scriptPath := filepath.Join(jackDir, "session.sh")
-	logPath := filepath.Join(jackDir, "session.log")
-	content := fmt.Sprintf("#!/bin/sh\n%s 2>%s\n", shellCmd, logPath)
-	if err := os.WriteFile(scriptPath, []byte(content), 0o600); err != nil {
-		return fmt.Errorf("writing session script: %w", err)
-	}
-
-	if err := createSession(name, dir, "sh "+scriptPath); err != nil {
+	if err := createSession(name, dir, tmuxCmd); err != nil {
+		_ = stopContainer(containerName)
 		return err
 	}
 
 	return attach(name)
+}
+
+type setupScript struct {
+	hostPath      string
+	containerPath string
+	label         string
+}
+
+// setupScripts returns the ordered list of setup scripts to run on jack in.
+func setupScripts(agent, project string) []setupScript {
+	configDir := env.configDir()
+	const containerConfig = "/home/jack/.config/jack"
+	return []setupScript{
+		{
+			hostPath:      filepath.Join(configDir, "setup.sh"),
+			containerPath: containerConfig + "/setup.sh",
+			label:         "global setup",
+		},
+		{
+			hostPath:      filepath.Join(configDir, "agents", agent, "setup.sh"),
+			containerPath: containerConfig + "/agents/" + agent + "/setup.sh",
+			label:         "agent setup for " + agent,
+		},
+		{
+			hostPath:      filepath.Join(configDir, "projects", project, "dev.sh"),
+			containerPath: containerConfig + "/projects/" + project + "/dev.sh",
+			label:         "project setup for " + project,
+		},
+	}
 }

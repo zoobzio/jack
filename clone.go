@@ -9,66 +9,72 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/zoobzio/jack/msg"
 )
 
 // Cloner clones a git repository into a directory.
 type Cloner func(url, dir string) error
 
 func init() {
-	cloneCmd.Flags().StringSliceP("team", "t", nil, "teams to clone for (required, repeatable)")
-	_ = cloneCmd.MarkFlagRequired("team")
+	cloneCmd.Flags().StringSliceP("agent", "a", nil, "agents to clone for (required, repeatable)")
+	_ = cloneCmd.MarkFlagRequired("agent")
 	cloneCmd.Flags().BoolP("force", "f", false, "remove existing repo and session before cloning")
 	rootCmd.AddCommand(cloneCmd)
 }
 
 var cloneCmd = &cobra.Command{
 	Use:   "clone <url>",
-	Short: "Clone a repo for a team",
-	Long:  "Clone a git repo into each team's isolated workspace and apply team skills.",
+	Short: "Clone a repo for an agent",
+	Long:  "Clone a git repo into each agent's isolated workspace and apply agent config.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		teams, _ := cmd.Flags().GetStringSlice("team")
+		agents, _ := cmd.Flags().GetStringSlice("agent")
 		force, _ := cmd.Flags().GetBool("force")
-		client := msg.NewClient(msg.Homeserver, "")
-		return runClone(args[0], teams, force, gitClone, linkFile, HasSession, KillSession, client.Register, client.Login, ageEncrypt, writeDescription, loadRegistry, saveRegistry)
+		return runClone(cmd.Context(), args[0], agents, force,
+			gitClone, linkFile, HasSession, KillSession,
+			writeDescription, loadRegistry, saveRegistry,
+			DockerBuild)
 	},
 }
 
-func runClone(url string, teams []string, force bool, clone Cloner, ln FileLinker, hasSession SessionChecker, kill SessionKiller, register msg.Registerer, login msg.Authenticator, encrypt TokenEncrypter, writeDesc DescriptionWriter, loadReg RegistryLoader, saveReg RegistrySaver) error {
+func runClone(ctx context.Context, url string, agents []string, force bool, clone Cloner, ln FileLinker, hasSession SessionChecker, kill SessionKiller, writeDesc DescriptionWriter, loadReg RegistryLoader, saveReg RegistrySaver, buildImage ImageBuilder) error {
 	repo := repoName(url)
 	if repo == "" {
 		return fmt.Errorf("cannot extract repo name from %q", url)
 	}
 
-	configDir := env.configDir()
+	// Build the jack base image.
+	if err := buildImage(ctx); err != nil {
+		return fmt.Errorf("building jack image: %w", err)
+	}
 
 	reg, err := loadReg()
 	if err != nil {
 		return fmt.Errorf("loading registry: %w", err)
 	}
 
-	for _, teamName := range teams {
-		// Validate governance prerequisites per team.
-		if err := validateGovernance(configDir, teamName, repo); err != nil {
-			return err
+	for _, agentName := range agents {
+		if _, ok := cfg.Profiles[agentName]; !ok {
+			return fmt.Errorf("unknown agent %q (no matching profile)", agentName)
 		}
 
-		profile, ok := cfg.Profiles[teamName]
-		if !ok {
-			return fmt.Errorf("unknown team %q (no matching profile)", teamName)
+		// Issue a certificate for this agent if CA is configured and no cert exists.
+		if cfg.CA.URL != "" && !hasCert(agentName) {
+			if err := issueCert(ctx, agentName); err != nil {
+				return fmt.Errorf("issuing cert for agent %s: %w", agentName, err)
+			}
+			fmt.Printf("issued certificate for agent %s\n", agentName)
 		}
 
-		dir := filepath.Join(env.dataDir(), teamName, repo)
+		dir := filepath.Join(env.dataDir(), agentName, repo)
 
 		// Check for existing clone.
 		if _, err := os.Stat(dir); err == nil {
 			if !force {
-				fmt.Printf("warning: %s already exists for team %s, skipping (use --force to replace)\n", repo, teamName)
+				fmt.Printf("warning: %s already exists for agent %s, skipping (use --force to replace)\n", repo, agentName)
 				continue
 			}
 			// Kill the session if it's running.
-			name := SessionName(teamName, repo)
+			name := SessionName(agentName, repo)
 			if hasSession(name) {
 				if err := kill(name); err != nil {
 					return fmt.Errorf("killing session %s: %w", name, err)
@@ -85,46 +91,35 @@ func runClone(url string, teams []string, force bool, clone Cloner, ln FileLinke
 		}
 
 		if err := clone(url, dir); err != nil {
-			return fmt.Errorf("cloning %s for team %s: %w", repo, teamName, err)
+			return fmt.Errorf("cloning %s for agent %s: %w", repo, agentName, err)
 		}
 
-		if err := applyTeam(teamName, repo, dir, ln); err != nil {
-			return fmt.Errorf("applying team %s: %w", teamName, err)
+		// Configure git identity for this agent's clone.
+		profile := cfg.Profiles[agentName]
+		if profile.Git.Name != "" {
+			_ = gitConfig(dir, "user.name", profile.Git.Name)
+		}
+		if profile.Git.Email != "" {
+			_ = gitConfig(dir, "user.email", profile.Git.Email)
 		}
 
-		// Register Matrix user for this session, falling back to login if
-		// the user already exists (e.g. re-clone after a failed attempt).
-		username := teamName + "-" + repo
-		mReg, err := register(username, username, cfg.Matrix.RegistrationToken)
-		if err != nil {
-			if !strings.Contains(err.Error(), "M_USER_IN_USE") {
-				return fmt.Errorf("registering Matrix user %s: %w", username, err)
-			}
-			mReg, err = login(username, username)
-			if err != nil {
-				return fmt.Errorf("logging in Matrix user %s: %w", username, err)
-			}
-		}
-
-		// Encrypt and store the token.
-		pubKeyPath := expandHome(profile.SSH.Key) + ".pub"
-		if err := encrypt(mReg.AccessToken, pubKeyPath, tokenAgePath(dir)); err != nil {
-			return fmt.Errorf("encrypting token for %s: %w", username, err)
+		if err := applyAgent(agentName, ln); err != nil {
+			return fmt.Errorf("applying agent %s: %w", agentName, err)
 		}
 
 		// Write session description.
-		desc := fmt.Sprintf("team=%s repo=%s", teamName, repo)
+		desc := fmt.Sprintf("agent=%s repo=%s", agentName, repo)
 		if err := writeDesc(descriptionPath(dir), desc); err != nil {
-			return fmt.Errorf("writing description for %s: %w", username, err)
+			return fmt.Errorf("writing description for %s: %w", agentName, err)
 		}
 
 		// Record in registry.
-		reg.Add(teamName, repo, url)
+		reg.Add(agentName, repo, url)
 		if err := saveReg(reg); err != nil {
 			return fmt.Errorf("saving registry: %w", err)
 		}
 
-		fmt.Printf("cloned %s for team %s\n", repo, teamName)
+		fmt.Printf("cloned %s for agent %s\n", repo, agentName)
 	}
 
 	return nil
@@ -134,6 +129,12 @@ func gitClone(url, dir string) error {
 	cmd := exec.CommandContext(context.Background(), "git", "clone", url, dir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// gitConfig sets a git config value in the given repo directory.
+func gitConfig(dir, key, value string) error {
+	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "config", key, value)
 	return cmd.Run()
 }
 
