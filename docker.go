@@ -62,6 +62,11 @@ func ContainerName(agent, repo string) string {
 	return "jack-" + agent + "-" + repo
 }
 
+// WorktreeContainerPath returns the container path for a worktree.
+func WorktreeContainerPath(repo, branch string) string {
+	return "/home/jack/workspace/" + WorktreeDir(repo, branch)
+}
+
 // ToolsVolume returns the named volume for persisting installed tools.
 func ToolsVolume(agent, repo string) Volume {
 	return Volume{

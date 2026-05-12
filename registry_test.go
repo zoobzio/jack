@@ -124,6 +124,30 @@ func TestRegistryLoadMissingFile(t *testing.T) {
 	jtesting.AssertEqual(t, len(r.Projects), 0)
 }
 
+func TestRegistryLoadReadError(t *testing.T) {
+	dir := t.TempDir()
+	env = Env{DataDir: dir, ConfigDir: t.TempDir()}
+
+	// Create a directory where registry.yaml should be a file — ReadFile will fail with non-ENOENT error.
+	err := os.MkdirAll(filepath.Join(dir, "registry.yaml"), 0o750)
+	jtesting.AssertNoError(t, err)
+
+	_, err = loadRegistry()
+	jtesting.AssertError(t, err)
+}
+
+func TestRegistryLoadInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	env = Env{DataDir: dir, ConfigDir: t.TempDir()}
+
+	// Write invalid YAML to the registry file.
+	err := os.WriteFile(filepath.Join(dir, "registry.yaml"), []byte(":::invalid yaml[[["), 0o600)
+	jtesting.AssertNoError(t, err)
+
+	_, err = loadRegistry()
+	jtesting.AssertError(t, err)
+}
+
 func TestRegistrySaveCreatesDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "dir")
 	env = Env{DataDir: dir, ConfigDir: t.TempDir()}

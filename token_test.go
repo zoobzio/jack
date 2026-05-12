@@ -40,4 +40,11 @@ func TestWriteDescription(t *testing.T) {
 		jtesting.AssertNoError(t, err)
 		jtesting.AssertEqual(t, string(data), "second")
 	})
+
+	t.Run("error creating directory", func(t *testing.T) {
+		// Use an invalid path that cannot be created.
+		path := filepath.Join("/dev/null", "impossible", "description.txt")
+		err := writeDescription(path, "will fail")
+		jtesting.AssertError(t, err)
+	})
 }

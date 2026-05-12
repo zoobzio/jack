@@ -151,6 +151,19 @@ func TestCertNeedsRenewalFalseWhenFarFromExpiry(t *testing.T) {
 	jtesting.AssertEqual(t, certNeedsRenewal("blue", 7*24*time.Hour), false)
 }
 
+func TestCertExpiryErrorOnInvalidDER(t *testing.T) {
+	tmpDir := setupAgentDir(t, "blue")
+	certFile := filepath.Join(tmpDir, "agents", "blue", "cert.pem")
+	// Write a PEM block with invalid DER bytes.
+	invalidPEM := "-----BEGIN CERTIFICATE-----\nZm9vYmFy\n-----END CERTIFICATE-----\n"
+	err := os.WriteFile(certFile, []byte(invalidPEM), 0o600)
+	jtesting.AssertNoError(t, err)
+
+	_, err = certExpiry("blue")
+	jtesting.AssertError(t, err)
+	jtesting.AssertEqual(t, strings.Contains(err.Error(), "parsing cert"), true)
+}
+
 func TestCertNeedsRenewalTrueWhenAlreadyExpired(t *testing.T) {
 	tmpDir := setupAgentDir(t, "blue")
 	certFile := filepath.Join(tmpDir, "agents", "blue", "cert.pem")
