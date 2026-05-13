@@ -11,22 +11,15 @@ import (
 )
 
 const jackImage = "jack"
+const containerHome = "/root"
 
-const baseDockerfile = `FROM debian:bookworm-slim
+const baseDockerfile = `FROM node:22-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git openssh-client curl ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+    git curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN npm install -g @anthropic-ai/claude-code
-RUN useradd -m -s /bin/bash jack
-RUN mkdir -p /home/jack/.ssh && chmod 700 /home/jack/.ssh \
-    && ssh-keyscan github.com >> /home/jack/.ssh/known_hosts \
-    && chown -R jack:jack /home/jack/.ssh
-RUN mkdir -p /home/jack/.local/bin && chown jack:jack /home/jack/.local/bin
-RUN mkdir -p /home/jack/workspace/repo && chown -R jack:jack /home/jack/workspace
-USER jack
-ENV PATH="/home/jack/.local/bin:${PATH}"
-WORKDIR /home/jack/workspace/repo
+RUN mkdir -p /root/.jack/bin /root/workspace
+ENV PATH="/root/.jack/bin:${PATH}"
+WORKDIR /root
 `
 
 // Mount describes a Docker bind mount.
@@ -64,41 +57,41 @@ func ContainerName(agent, repo string) string {
 
 // WorktreeContainerPath returns the container path for a worktree.
 func WorktreeContainerPath(repo, branch string) string {
-	return "/home/jack/workspace/" + WorktreeDir(repo, branch)
+	return containerHome + "/workspace/" + WorktreeDir(repo, branch)
 }
 
 // ToolsVolume returns the named volume for persisting installed tools.
 func ToolsVolume(agent, repo string) Volume {
 	return Volume{
 		Name:   "jack-" + agent + "-" + repo + "-tools",
-		Target: "/home/jack/.local/bin",
+		Target: containerHome + "/.jack/bin",
 	}
 }
 
 // SessionMounts returns the standard bind mounts for a session container.
 // The agent's .claude/ is mounted one level above the repo so that Claude
 // Code's config inheritance merges agent config with the repo's own .claude/.
-func SessionMounts(profile Profile, agent, repoDir string) []Mount {
+func SessionMounts(profile Profile, agent, repo, repoDir string) []Mount {
 	home, _ := os.UserHomeDir()
 	agentClaudeDir := filepath.Join(env.dataDir(), agent, ".claude")
 	mounts := []Mount{
-		{Source: filepath.Join(home, ".claude"), Target: "/home/jack/.claude", ReadOnly: false},
-		{Source: filepath.Join(home, ".claude.json"), Target: "/home/jack/.claude.json", ReadOnly: false},
-		{Source: agentClaudeDir, Target: "/home/jack/workspace/.claude", ReadOnly: true},
-		{Source: repoDir, Target: "/home/jack/workspace/repo", ReadOnly: false},
+		{Source: filepath.Join(home, ".claude"), Target: containerHome + "/.claude", ReadOnly: false},
+		{Source: filepath.Join(home, ".claude.json"), Target: containerHome + "/.claude.json", ReadOnly: false},
+		{Source: agentClaudeDir, Target: containerHome + "/workspace/.claude", ReadOnly: true},
+		{Source: repoDir, Target: containerHome + "/workspace/" + repo, ReadOnly: false},
 	}
 
 	// Mount agent certificate and CA root for mTLS authentication.
 	if hasCert(agent) {
 		mounts = append(mounts,
-			Mount{Source: certPath(agent), Target: "/home/jack/.jack/cert.pem", ReadOnly: true},
-			Mount{Source: keyPath(agent), Target: "/home/jack/.jack/key.pem", ReadOnly: true},
+			Mount{Source: certPath(agent), Target: containerHome + "/.jack/cert.pem", ReadOnly: true},
+			Mount{Source: keyPath(agent), Target: containerHome + "/.jack/key.pem", ReadOnly: true},
 		)
 	}
 	if cfg.CA.Root != "" {
 		rootPath := expandHome(cfg.CA.Root)
 		if _, err := os.Stat(rootPath); err == nil {
-			mounts = append(mounts, Mount{Source: rootPath, Target: "/home/jack/.jack/ca.pem", ReadOnly: true})
+			mounts = append(mounts, Mount{Source: rootPath, Target: containerHome + "/.jack/ca.pem", ReadOnly: true})
 		}
 	}
 
@@ -159,7 +152,7 @@ func DockerBuild(ctx context.Context) error {
 // DockerRun starts an idle container with the given name, mounts, volumes, and env.
 func DockerRun(name string, mounts []Mount, volumes []Volume, envVars map[string]string) error {
 	args := make([]string, 0, 6+2*len(mounts)+2*len(volumes)+2*len(envVars)+3)
-	args = append(args, "run", "-d", "--name", name, "-w", "/home/jack/workspace/repo")
+	args = append(args, "run", "-d", "--name", name)
 	for _, m := range mounts {
 		vol := m.Source + ":" + m.Target
 		if m.ReadOnly {
@@ -222,6 +215,8 @@ func DockerCheck(name string) (running bool, exists bool) {
 }
 
 // DockerExecCmd returns the tmux command string that execs into a container.
-func DockerExecCmd(container, shellCmd string) string {
-	return fmt.Sprintf("docker exec -it %s sh -c %q", container, shellCmd)
+func DockerExecCmd(container, workdir string, args ...string) string {
+	parts := []string{"docker", "exec", "-it", "-w", workdir, container}
+	parts = append(parts, args...)
+	return strings.Join(parts, " ")
 }

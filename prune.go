@@ -87,7 +87,7 @@ func runPrune(agent, project string, force, dryRun bool, hasSession SessionCheck
 	for _, branch := range prunable {
 		wtDir := WorktreeContainerPath(project, branch)
 		if err := execContainer(containerName, []string{
-			"git", "-C", "/home/jack/workspace/repo", "worktree", "remove", wtDir,
+			"git", "-C", containerHome + "/workspace/" + project, "worktree", "remove", wtDir,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not remove worktree %s: %v\n", branch, err)
 			continue

@@ -3,7 +3,6 @@
 package jack
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,69 +14,81 @@ import (
 func TestApplyAgentMissingDir(t *testing.T) {
 	configDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: t.TempDir()}
-	err := applyAgent("bogus", noopLinker)
+	err := applyAgent("bogus")
 	jtesting.AssertError(t, err)
 	jtesting.AssertEqual(t, strings.Contains(err.Error(), "agent directory not found"), true)
 }
 
-func TestApplyAgentLinksFiles(t *testing.T) {
+func TestApplyAgentCopiesFiles(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: dataDir}
 
-	// Create agent config directory with files.
 	agentDir := filepath.Join(configDir, "agents", "blue")
 	_ = os.MkdirAll(agentDir, 0o750)
 	_ = os.WriteFile(filepath.Join(agentDir, "CLAUDE.md"), []byte("soul"), 0o600)
 	_ = os.WriteFile(filepath.Join(agentDir, "settings.json"), []byte("{}"), 0o600)
 
-	type linkOp struct{ src, dst string }
-	var links []linkOp
-
-	linker := func(src, dst string) error {
-		links = append(links, linkOp{src, dst})
-		return nil
-	}
-
-	err := applyAgent("blue", linker)
+	err := applyAgent("blue")
 	jtesting.AssertNoError(t, err)
 
-	jtesting.AssertEqual(t, len(links), 2)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[0].src, "agents/blue/CLAUDE.md"), true)
-	// Target should be in the agent's data dir .claude/
-	jtesting.AssertEqual(t, strings.HasSuffix(links[0].dst, ".claude/CLAUDE.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[1].src, "agents/blue/settings.json"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[1].dst, ".claude/settings.json"), true)
+	claudeDir := filepath.Join(dataDir, "blue", ".claude")
+	data, err := os.ReadFile(filepath.Join(claudeDir, "CLAUDE.md"))
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, string(data), "soul")
+
+	data, err = os.ReadFile(filepath.Join(claudeDir, "settings.json"))
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, string(data), "{}")
+
+	// Verify they are real files, not symlinks.
+	info, err := os.Lstat(filepath.Join(claudeDir, "CLAUDE.md"))
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, info.Mode().IsRegular(), true)
 }
 
-func TestApplyAgentLinksSubdirectories(t *testing.T) {
+func TestApplyAgentCopiesSubdirectories(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
 	env = Env{ConfigDir: configDir, DataDir: dataDir}
 
-	// Create agent config with a commands/ subdirectory.
 	agentDir := filepath.Join(configDir, "agents", "blue")
 	commandsDir := filepath.Join(agentDir, "commands", "commit")
 	_ = os.MkdirAll(commandsDir, 0o750)
 	_ = os.WriteFile(filepath.Join(commandsDir, "SKILL.md"), []byte("commit skill"), 0o600)
 	_ = os.WriteFile(filepath.Join(agentDir, "CLAUDE.md"), []byte("soul"), 0o600)
 
-	type linkOp struct{ src, dst string }
-	var links []linkOp
-
-	linker := func(src, dst string) error {
-		links = append(links, linkOp{src, dst})
-		return nil
-	}
-
-	err := applyAgent("blue", linker)
+	err := applyAgent("blue")
 	jtesting.AssertNoError(t, err)
 
-	// 1 top-level file + 1 file inside commands/commit/
-	jtesting.AssertEqual(t, len(links), 2)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[0].src, "CLAUDE.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[1].src, "SKILL.md"), true)
-	jtesting.AssertEqual(t, strings.HasSuffix(links[1].dst, ".claude/commands/commit/SKILL.md"), true)
+	claudeDir := filepath.Join(dataDir, "blue", ".claude")
+	data, err := os.ReadFile(filepath.Join(claudeDir, "commands", "commit", "SKILL.md"))
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, string(data), "commit skill")
+}
+
+func TestApplyAgentFollowsSymlinks(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+	env = Env{ConfigDir: configDir, DataDir: dataDir}
+
+	sharedDir := filepath.Join(configDir, "commands", "review")
+	_ = os.MkdirAll(sharedDir, 0o750)
+	_ = os.WriteFile(filepath.Join(sharedDir, "SKILL.md"), []byte("review skill"), 0o600)
+
+	agentDir := filepath.Join(configDir, "agents", "blue")
+	agentCmdsDir := filepath.Join(agentDir, "commands")
+	_ = os.MkdirAll(agentCmdsDir, 0o750)
+	_ = os.Symlink(sharedDir, filepath.Join(agentCmdsDir, "review"))
+	_ = os.WriteFile(filepath.Join(agentDir, "CLAUDE.md"), []byte("soul"), 0o600)
+
+	err := applyAgent("blue")
+	jtesting.AssertNoError(t, err)
+
+	claudeDir := filepath.Join(dataDir, "blue", ".claude")
+	data, err := os.ReadFile(filepath.Join(claudeDir, "commands", "review", "SKILL.md"))
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, string(data), "review skill")
 }
 
 func TestApplyAgentEmptyDir(t *testing.T) {
@@ -87,15 +98,12 @@ func TestApplyAgentEmptyDir(t *testing.T) {
 
 	_ = os.MkdirAll(filepath.Join(configDir, "agents", "blue"), 0o750)
 
-	var linkCount int
-	linker := func(_, _ string) error {
-		linkCount++
-		return nil
-	}
-
-	err := applyAgent("blue", linker)
+	err := applyAgent("blue")
 	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, linkCount, 0)
+
+	entries, err := os.ReadDir(filepath.Join(dataDir, "blue", ".claude"))
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, len(entries), 0)
 }
 
 func TestApplyAgentCreateClaudeDirError(t *testing.T) {
@@ -104,70 +112,61 @@ func TestApplyAgentCreateClaudeDirError(t *testing.T) {
 
 	_ = os.MkdirAll(filepath.Join(configDir, "agents", "blue"), 0o750)
 
-	err := applyAgent("blue", noopLinker)
+	err := applyAgent("blue")
 	jtesting.AssertError(t, err)
 	jtesting.AssertEqual(t, strings.Contains(err.Error(), "creating agent .claude dir"), true)
 }
 
-func TestLinkDirRecursiveLinkerError(t *testing.T) {
-	srcDir := t.TempDir()
-	dstDir := t.TempDir()
-
-	_ = os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("hello"), 0o600)
-
-	failLinker := func(_, _ string) error {
-		return fmt.Errorf("link failed")
-	}
-
-	err := linkDirRecursive(srcDir, dstDir, failLinker)
+func TestCopyDirRecursiveReadDirError(t *testing.T) {
+	err := copyDirRecursive("/nonexistent/dir", t.TempDir())
 	jtesting.AssertError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(err.Error(), "link failed"), true)
 }
 
-func TestLinkDirRecursiveSubdirError(t *testing.T) {
+func TestCopyDirRecursiveStatError(t *testing.T) {
 	srcDir := t.TempDir()
-	// Create a subdirectory in source.
+	// Create a broken symlink.
+	_ = os.Symlink("/nonexistent/target", filepath.Join(srcDir, "broken"))
+
+	err := copyDirRecursive(srcDir, t.TempDir())
+	jtesting.AssertError(t, err)
+}
+
+func TestCopyDirRecursiveSubdirError(t *testing.T) {
+	srcDir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(srcDir, "subdir"), 0o750)
-	_ = os.WriteFile(filepath.Join(srcDir, "subdir", "file.txt"), []byte("hello"), 0o600)
 
-	// Use a dst path under /dev/null so MkdirAll fails for subdirectory.
-	err := linkDirRecursive(srcDir, "/dev/null/impossible", noopLinker)
-	jtesting.AssertError(t, err)
-	jtesting.AssertEqual(t, strings.Contains(err.Error(), "creating directory"), true)
-}
-
-func TestLinkDirRecursiveReadDirError(t *testing.T) {
-	err := linkDirRecursive("/nonexistent/dir", t.TempDir(), noopLinker)
+	err := copyDirRecursive(srcDir, "/dev/null/impossible")
 	jtesting.AssertError(t, err)
 }
 
-func TestLinkFileEvalSymlinksError(t *testing.T) {
-	dstDir := t.TempDir()
-	dstFile := filepath.Join(dstDir, "link.txt")
-	// Source file doesn't exist — EvalSymlinks will fail.
-	err := linkFile("/nonexistent/source.txt", dstFile)
+func TestCopyFileContentError(t *testing.T) {
+	err := copyFileContent("/nonexistent/file", filepath.Join(t.TempDir(), "dst"))
 	jtesting.AssertError(t, err)
 }
 
-func TestLinkFile(t *testing.T) {
-	srcDir := t.TempDir()
-	dstDir := t.TempDir()
+func TestCopyFileContentCreateError(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "src")
+	_ = os.WriteFile(src, []byte("data"), 0o600)
 
-	srcFile := filepath.Join(srcDir, "source.txt")
-	_ = os.WriteFile(srcFile, []byte("content"), 0o600)
+	err := copyFileContent(src, "/dev/null/impossible/dst")
+	jtesting.AssertError(t, err)
+}
 
-	dstFile := filepath.Join(dstDir, "link.txt")
+func TestApplyAgentOverwritesPrevious(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+	env = Env{ConfigDir: configDir, DataDir: dataDir}
 
-	err := linkFile(srcFile, dstFile)
+	agentDir := filepath.Join(configDir, "agents", "blue")
+	_ = os.MkdirAll(agentDir, 0o750)
+	_ = os.WriteFile(filepath.Join(agentDir, "CLAUDE.md"), []byte("v1"), 0o600)
+
+	_ = applyAgent("blue")
+
+	_ = os.WriteFile(filepath.Join(agentDir, "CLAUDE.md"), []byte("v2"), 0o600)
+	_ = applyAgent("blue")
+
+	data, err := os.ReadFile(filepath.Join(dataDir, "blue", ".claude", "CLAUDE.md"))
 	jtesting.AssertNoError(t, err)
-
-	// Verify it's a symlink pointing to the source.
-	target, err := os.Readlink(dstFile)
-	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, target, srcFile)
-
-	// Verify content is readable through the symlink.
-	data, err := os.ReadFile(dstFile)
-	jtesting.AssertNoError(t, err)
-	jtesting.AssertEqual(t, string(data), "content")
+	jtesting.AssertEqual(t, string(data), "v2")
 }

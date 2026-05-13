@@ -5,7 +5,6 @@ package jack
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	jtesting "github.com/zoobzio/jack/testing"
@@ -25,19 +24,19 @@ func TestSessionMountsBase(t *testing.T) {
 	profile := Profile{}
 	repoDir := t.TempDir()
 
-	mounts := SessionMounts(profile, "blue", repoDir)
+	mounts := SessionMounts(profile, "blue", "vicky", repoDir)
 
 	home, _ := os.UserHomeDir()
 	// .claude, .claude.json, agent .claude/, repo = 4
 	jtesting.AssertEqual(t, len(mounts), 4)
 	jtesting.AssertEqual(t, mounts[0].Source, filepath.Join(home, ".claude"))
-	jtesting.AssertEqual(t, mounts[0].Target, "/home/jack/.claude")
+	jtesting.AssertEqual(t, mounts[0].Target, "/root/.claude")
 	jtesting.AssertEqual(t, mounts[1].Source, filepath.Join(home, ".claude.json"))
-	jtesting.AssertEqual(t, mounts[1].Target, "/home/jack/.claude.json")
-	jtesting.AssertEqual(t, mounts[2].Target, "/home/jack/workspace/.claude")
+	jtesting.AssertEqual(t, mounts[1].Target, "/root/.claude.json")
+	jtesting.AssertEqual(t, mounts[2].Target, "/root/workspace/.claude")
 	jtesting.AssertEqual(t, mounts[2].ReadOnly, true)
 	jtesting.AssertEqual(t, mounts[3].Source, repoDir)
-	jtesting.AssertEqual(t, mounts[3].Target, "/home/jack/workspace/repo")
+	jtesting.AssertEqual(t, mounts[3].Target, "/root/workspace/vicky")
 	jtesting.AssertEqual(t, mounts[3].ReadOnly, false)
 }
 
@@ -56,13 +55,13 @@ func TestSessionMountsWithCert(t *testing.T) {
 	profile := Profile{}
 	repoDir := t.TempDir()
 
-	mounts := SessionMounts(profile, "blue", repoDir)
+	mounts := SessionMounts(profile, "blue", "vicky", repoDir)
 
 	// base 4 + cert + key = 6
 	jtesting.AssertEqual(t, len(mounts), 6)
-	jtesting.AssertEqual(t, mounts[4].Target, "/home/jack/.jack/cert.pem")
+	jtesting.AssertEqual(t, mounts[4].Target, "/root/.jack/cert.pem")
 	jtesting.AssertEqual(t, mounts[4].ReadOnly, true)
-	jtesting.AssertEqual(t, mounts[5].Target, "/home/jack/.jack/key.pem")
+	jtesting.AssertEqual(t, mounts[5].Target, "/root/.jack/key.pem")
 	jtesting.AssertEqual(t, mounts[5].ReadOnly, true)
 }
 
@@ -78,12 +77,12 @@ func TestSessionMountsWithCARoot(t *testing.T) {
 	profile := Profile{}
 	repoDir := t.TempDir()
 
-	mounts := SessionMounts(profile, "blue", repoDir)
+	mounts := SessionMounts(profile, "blue", "vicky", repoDir)
 
 	// base 4 + ca root = 5
 	jtesting.AssertEqual(t, len(mounts), 5)
 	jtesting.AssertEqual(t, mounts[4].Source, caPath)
-	jtesting.AssertEqual(t, mounts[4].Target, "/home/jack/.jack/ca.pem")
+	jtesting.AssertEqual(t, mounts[4].Target, "/root/.jack/ca.pem")
 	jtesting.AssertEqual(t, mounts[4].ReadOnly, true)
 }
 
@@ -101,7 +100,7 @@ func TestSessionMountsWithSupportingRepos(t *testing.T) {
 	}
 	repoDir := t.TempDir()
 
-	mounts := SessionMounts(profile, "blue", repoDir)
+	mounts := SessionMounts(profile, "blue", "vicky", repoDir)
 
 	// base 4 + supporting repo = 5
 	jtesting.AssertEqual(t, len(mounts), 5)
@@ -121,7 +120,7 @@ func TestSessionMountsSupportingRepoMissingDir(t *testing.T) {
 	}
 	repoDir := t.TempDir()
 
-	mounts := SessionMounts(profile, "blue", repoDir)
+	mounts := SessionMounts(profile, "blue", "vicky", repoDir)
 
 	// base 4 only; missing dir is skipped
 	jtesting.AssertEqual(t, len(mounts), 4)
@@ -161,18 +160,17 @@ func TestSessionEnvPartial(t *testing.T) {
 }
 
 func TestDockerExecCmd(t *testing.T) {
-	got := DockerExecCmd("jack-blue-vicky", "claude --dangerously-skip-permissions")
-	jtesting.AssertEqual(t, got, `docker exec -it jack-blue-vicky sh -c "claude --dangerously-skip-permissions"`)
+	got := DockerExecCmd("jack-blue-vicky", "/workspace", "claude")
+	jtesting.AssertEqual(t, got, "docker exec -it -w /workspace jack-blue-vicky claude")
 }
 
-func TestDockerExecCmdQuoting(t *testing.T) {
-	got := DockerExecCmd("mycontainer", "echo hello")
-	jtesting.AssertEqual(t, strings.Contains(got, `"echo hello"`), true)
-	jtesting.AssertEqual(t, strings.HasPrefix(got, "docker exec -it mycontainer sh -c"), true)
+func TestDockerExecCmdNoArgs(t *testing.T) {
+	got := DockerExecCmd("mycontainer", "/root", "bash")
+	jtesting.AssertEqual(t, got, "docker exec -it -w /root mycontainer bash")
 }
 
 func TestToolsVolume(t *testing.T) {
 	v := ToolsVolume("blue", "vicky")
 	jtesting.AssertEqual(t, v.Name, "jack-blue-vicky-tools")
-	jtesting.AssertEqual(t, v.Target, "/home/jack/.local/bin")
+	jtesting.AssertEqual(t, v.Target, "/root/.jack/bin")
 }
