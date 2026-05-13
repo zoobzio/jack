@@ -116,3 +116,79 @@ func TestRunOutContainerStopError(t *testing.T) {
 	err := runOut("blue-vicky", "", "", "", existsChecker, noopKiller, stopper)
 	jtesting.AssertNoError(t, err)
 }
+
+func TestRunOutAll(t *testing.T) {
+	reg := stubRegistry(
+		RegistryEntry{Agent: "blue", Repo: "vicky"},
+		RegistryEntry{Agent: "blue", Repo: "flux"},
+		RegistryEntry{Agent: "red", Repo: "sentinel"},
+	)
+
+	// Only blue-vicky and red-sentinel have active tmux sessions.
+	sessions := func() ([]TmuxSession, error) {
+		return []TmuxSession{
+			{Name: "blue-vicky"},
+			{Name: "red-sentinel"},
+			{Name: "personal"}, // not managed by jack
+		}, nil
+	}
+
+	hasSession := func(name string) bool {
+		return name == "blue-vicky" || name == "red-sentinel"
+	}
+
+	var killed []string
+	killer := func(name string) error {
+		killed = append(killed, name)
+		return nil
+	}
+
+	err := runOutAll(reg, sessions, hasSession, killer, noopContainerStopper)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, len(killed), 2)
+}
+
+func TestRunOutAllNoSessions(t *testing.T) {
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
+
+	sessions := func() ([]TmuxSession, error) {
+		return nil, nil
+	}
+
+	var killed int
+	killer := func(_ string) error {
+		killed++
+		return nil
+	}
+
+	err := runOutAll(reg, sessions, noopChecker, killer, noopContainerStopper)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, killed, 0)
+}
+
+func TestRunOutAllRegistryError(t *testing.T) {
+	failReg := func() (*Registry, error) { return nil, fmt.Errorf("corrupt") }
+
+	err := runOutAll(failReg, nil, noopChecker, noopKiller, noopContainerStopper)
+	jtesting.AssertError(t, err)
+	jtesting.AssertEqual(t, strings.Contains(err.Error(), "loading registry"), true)
+}
+
+func TestRunOutAllSkipsNonManaged(t *testing.T) {
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
+
+	// Only a non-managed session exists.
+	sessions := func() ([]TmuxSession, error) {
+		return []TmuxSession{{Name: "personal"}}, nil
+	}
+
+	var killed int
+	killer := func(_ string) error {
+		killed++
+		return nil
+	}
+
+	err := runOutAll(reg, sessions, existsChecker, killer, noopContainerStopper)
+	jtesting.AssertNoError(t, err)
+	jtesting.AssertEqual(t, killed, 0)
+}

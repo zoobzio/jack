@@ -12,6 +12,7 @@ func init() {
 	outCmd.Flags().StringP("agent", "a", "", "agent name")
 	outCmd.Flags().StringP("project", "p", "", "project name")
 	outCmd.Flags().StringP("worktree", "w", "", "branch name for worktree")
+	outCmd.Flags().Bool("all", false, "terminate all sessions")
 	rootCmd.AddCommand(outCmd)
 }
 
@@ -28,9 +29,13 @@ func parseSessionName(name string) (agent, project string) {
 var outCmd = &cobra.Command{
 	Use:   "out [name]",
 	Short: "Terminate a session",
-	Long:  "Terminate a session by name or by --agent, --project, and optional --worktree flags.\nWorktree sessions are killed but the worktree is left on disk.",
+	Long:  "Terminate a session by name, by --agent and --project flags, or --all.\nWorktree sessions are killed but the worktree is left on disk.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		all, _ := cmd.Flags().GetBool("all")
+		if all {
+			return runOutAll(loadRegistry, ListSessions, HasSession, KillSession, DockerStop)
+		}
 		var name string
 		if len(args) > 0 {
 			name = args[0]
@@ -72,5 +77,48 @@ func runOut(name, agent, project, branch string, hasSession SessionChecker, kill
 	}
 
 	fmt.Printf("killed session %s\n", name)
+	return nil
+}
+
+func runOutAll(loadReg RegistryLoader, list Lister, hasSession SessionChecker, kill SessionKiller, stopContainer ContainerStopper) error {
+	reg, err := loadReg()
+	if err != nil {
+		return fmt.Errorf("loading registry: %w", err)
+	}
+
+	sessions, err := list()
+	if err != nil {
+		return fmt.Errorf("listing sessions: %w", err)
+	}
+
+	// Build a set of jack-managed session names from the registry.
+	managed := make(map[string]bool)
+	for _, agent := range reg.Agents() {
+		for _, entry := range reg.ForAgent(agent) {
+			managed[SessionName(agent, entry.Repo, "")] = true
+		}
+	}
+
+	var killed int
+	for _, s := range sessions {
+		if !managed[s.Name] {
+			continue
+		}
+		if err := kill(s.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not kill %s: %v\n", s.Name, err)
+			continue
+		}
+		agent, project := parseSessionName(s.Name)
+		if agent != "" && project != "" && stopContainer != nil {
+			containerName := ContainerName(agent, project)
+			if err := stopContainer(containerName); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not stop container %s: %v\n", containerName, err)
+			}
+		}
+		fmt.Printf("killed session %s\n", s.Name)
+		killed++
+	}
+
+	fmt.Printf("killed %d session(s)\n", killed)
 	return nil
 }
