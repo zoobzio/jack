@@ -114,10 +114,10 @@ func runIn(agent, project, branch string, loadReg RegistryLoader, selAgent Agent
 	// Ensure the container is running (may already be up for another worktree).
 	running, _ := checkContainer(containerName)
 	if !running {
-		mounts := SessionMounts(profile, agent, dir)
+		mounts := SessionMounts(profile, agent, project, dir)
 		mounts = append(mounts, Mount{
 			Source:   env.configDir(),
-			Target:  "/home/jack/.config/jack",
+			Target:  containerHome + "/.config/jack",
 			ReadOnly: true,
 		})
 		volumes := []Volume{ToolsVolume(agent, project)}
@@ -142,14 +142,15 @@ func runIn(agent, project, branch string, loadReg RegistryLoader, selAgent Agent
 	}
 
 	// If worktree requested, create it inside the container if it doesn't exist.
-	workdir := "/home/jack/workspace/repo"
+	repoPath := containerHome + "/workspace/" + project
+	workdir := repoPath
 	if branch != "" {
 		wtDir := WorktreeContainerPath(project, branch)
 		// Create the worktree if it doesn't exist.
 		if err := execContainer(containerName, []string{
 			"sh", "-c",
-			fmt.Sprintf("test -d %s || git -C /home/jack/workspace/repo worktree add %s %s",
-				wtDir, wtDir, branch),
+			fmt.Sprintf("test -d %s || git -C %s worktree add %s %s",
+				wtDir, repoPath, wtDir, branch),
 		}); err != nil {
 			return fmt.Errorf("creating worktree for branch %s: %w", branch, err)
 		}
@@ -157,8 +158,7 @@ func runIn(agent, project, branch string, loadReg RegistryLoader, selAgent Agent
 	}
 
 	// Build the tmux command as docker exec into the container.
-	shellCmd := fmt.Sprintf("cd %s && exec claude --dangerously-skip-permissions", workdir)
-	tmuxCmd := DockerExecCmd(containerName, shellCmd)
+	tmuxCmd := DockerExecCmd(containerName, workdir, "claude")
 
 	if err := createSession(name, dir, tmuxCmd); err != nil {
 		if !running {
@@ -193,7 +193,7 @@ type setupScript struct {
 // setupScripts returns the ordered list of setup scripts to run on jack in.
 func setupScripts(agent, project string) []setupScript {
 	configDir := env.configDir()
-	const containerConfig = "/home/jack/.config/jack"
+	const containerConfig = containerHome + "/.config/jack"
 	return []setupScript{
 		{
 			hostPath:      filepath.Join(configDir, "setup.sh"),
