@@ -30,13 +30,13 @@ var cloneCmd = &cobra.Command{
 		agents, _ := cmd.Flags().GetStringSlice("agent")
 		force, _ := cmd.Flags().GetBool("force")
 		return runClone(cmd.Context(), args[0], agents, force,
-			gitClone, linkFile, HasSession, KillSession,
+			gitClone, HasSession, KillSession,
 			writeDescription, loadRegistry, saveRegistry,
 			DockerBuild)
 	},
 }
 
-func runClone(ctx context.Context, url string, agents []string, force bool, clone Cloner, ln FileLinker, hasSession SessionChecker, kill SessionKiller, writeDesc DescriptionWriter, loadReg RegistryLoader, saveReg RegistrySaver, buildImage ImageBuilder) error {
+func runClone(ctx context.Context, url string, agents []string, force bool, clone Cloner, hasSession SessionChecker, kill SessionKiller, writeDesc DescriptionWriter, loadReg RegistryLoader, saveReg RegistrySaver, buildImage ImageBuilder) error {
 	repo := repoName(url)
 	if repo == "" {
 		return fmt.Errorf("cannot extract repo name from %q", url)
@@ -103,7 +103,7 @@ func runClone(ctx context.Context, url string, agents []string, force bool, clon
 			_ = gitConfig(dir, "user.email", profile.Git.Email)
 		}
 
-		if err := applyAgent(agentName, ln); err != nil {
+		if err := applyAgent(agentName); err != nil {
 			return fmt.Errorf("applying agent %s: %w", agentName, err)
 		}
 

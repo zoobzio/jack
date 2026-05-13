@@ -41,12 +41,12 @@ func TestWorktreeDirFormat(t *testing.T) {
 func TestWorktreeContainerPath(t *testing.T) {
 	hash := WorktreeHash("feature-login")
 	got := WorktreeContainerPath("vicky", "feature-login")
-	want := "/home/jack/workspace/vicky-" + hash
+	want := "/root/workspace/vicky-" + hash
 	jtesting.AssertEqual(t, got, want)
 }
 
 func TestWorktreeContainerPathFormat(t *testing.T) {
 	got := WorktreeContainerPath("flux", "dev")
 	hash := WorktreeHash("dev")
-	jtesting.AssertEqual(t, got, "/home/jack/workspace/flux-"+hash)
+	jtesting.AssertEqual(t, got, "/root/workspace/flux-"+hash)
 }

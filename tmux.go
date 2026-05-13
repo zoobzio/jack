@@ -99,10 +99,9 @@ func KillSession(name string) error {
 	return nil
 }
 
-// CreateSession creates a detached tmux session running the given shell command
-// in the given directory.
-func CreateSession(name, dir, shellCmd string) error {
-	cmd := exec.CommandContext(context.Background(), "tmux", "new-session", "-d", "-s", name, "-c", dir, shellCmd)
+// CreateSession creates a detached tmux session running the given shell command.
+func CreateSession(name, _, shellCmd string) error {
+	cmd := exec.CommandContext(context.Background(), "tmux", "new-session", "-d", "-s", name, "sh", "-c", shellCmd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 

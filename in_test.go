@@ -210,13 +210,13 @@ func TestSetupScripts(t *testing.T) {
 	jtesting.AssertEqual(t, len(scripts), 3)
 
 	jtesting.AssertEqual(t, scripts[0].label, "global setup")
-	jtesting.AssertEqual(t, scripts[0].containerPath, "/home/jack/.config/jack/setup.sh")
+	jtesting.AssertEqual(t, scripts[0].containerPath, "/root/.config/jack/setup.sh")
 
 	jtesting.AssertEqual(t, scripts[1].label, "agent setup for blue")
-	jtesting.AssertEqual(t, scripts[1].containerPath, "/home/jack/.config/jack/agents/blue/setup.sh")
+	jtesting.AssertEqual(t, scripts[1].containerPath, "/root/.config/jack/agents/blue/setup.sh")
 
 	jtesting.AssertEqual(t, scripts[2].label, "project setup for vicky")
-	jtesting.AssertEqual(t, scripts[2].containerPath, "/home/jack/.config/jack/projects/vicky/dev.sh")
+	jtesting.AssertEqual(t, scripts[2].containerPath, "/root/.config/jack/projects/vicky/dev.sh")
 }
 
 func TestRunInRegistryLoadError(t *testing.T) {
