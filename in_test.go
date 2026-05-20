@@ -477,6 +477,75 @@ func TestRunInProjectSelectorError(t *testing.T) {
 	jtesting.AssertEqual(t, strings.Contains(err.Error(), "cancelled"), true)
 }
 
+func TestCertBootstrapCmd(t *testing.T) {
+	cmd := certBootstrapCmd()
+	jtesting.AssertEqual(t, cmd[0], "sh")
+	jtesting.AssertEqual(t, cmd[1], "-c")
+	jtesting.AssertEqual(t, strings.Contains(cmd[2], "step ca bootstrap"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd[2], "step ca certificate"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd[2], "step ca renew --daemon"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd[2], "$JACK_AGENT"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd[2], "$JACK_CA_URL"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd[2], "$JACK_CA_FINGERPRINT"), true)
+	jtesting.AssertEqual(t, strings.Contains(cmd[2], "$JACK_CA_PROVISIONER"), true)
+}
+
+func TestRunInWithCABootstraps(t *testing.T) {
+	cfg = Config{
+		Profiles: map[string]Profile{
+			"blue": {Git: GitConfig{Name: "Rockhopper", Email: "rock@example.com"}},
+		},
+		CA: CAConfig{URL: "https://ca.example.com", Fingerprint: "abc", Provisioner: "jack"},
+	}
+	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
+
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
+
+	var execedCmds []string
+	execer := func(_ string, cmd []string) error {
+		execedCmds = append(execedCmds, strings.Join(cmd, " "))
+		return nil
+	}
+
+	err := runIn("blue", "vicky", "", reg, failSelector, failProjectSelector,
+		noopChecker, noopCreator, noopAttacher,
+		noopContainerRunner, execer, noopContainerStopper, noopContainerChecker)
+	jtesting.AssertNoError(t, err)
+
+	// First exec should be the cert bootstrap.
+	jtesting.AssertEqual(t, len(execedCmds) >= 1, true)
+	jtesting.AssertEqual(t, strings.Contains(execedCmds[0], "step ca bootstrap"), true)
+}
+
+func TestRunInCertBootstrapError(t *testing.T) {
+	cfg = Config{
+		Profiles: map[string]Profile{
+			"blue": {Git: GitConfig{Name: "Rockhopper", Email: "rock@example.com"}},
+		},
+		CA: CAConfig{URL: "https://ca.example.com", Fingerprint: "abc", Provisioner: "jack"},
+	}
+	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
+
+	reg := stubRegistry(RegistryEntry{Agent: "blue", Repo: "vicky"})
+
+	failExecer := func(_ string, _ []string) error {
+		return fmt.Errorf("step not found")
+	}
+
+	var containerStopped bool
+	stopper := func(_ string) error {
+		containerStopped = true
+		return nil
+	}
+
+	err := runIn("blue", "vicky", "", reg, failSelector, failProjectSelector,
+		noopChecker, noopCreator, noopAttacher,
+		noopContainerRunner, failExecer, stopper, noopContainerChecker)
+	jtesting.AssertError(t, err)
+	jtesting.AssertEqual(t, strings.Contains(err.Error(), "bootstrapping agent certificate"), true)
+	jtesting.AssertEqual(t, containerStopped, true)
+}
+
 func TestRunInMultipleProjects(t *testing.T) {
 	newTestConfig()
 	env = Env{DataDir: t.TempDir(), ConfigDir: t.TempDir()}

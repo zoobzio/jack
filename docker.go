@@ -16,8 +16,9 @@ const containerHome = "/root"
 const baseDockerfile = `FROM node:22-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://dl.smallstep.com/install-step-cli.sh | bash
 RUN npm install -g @anthropic-ai/claude-code
-RUN mkdir -p /root/.jack/bin /root/workspace
+RUN mkdir -p /root/.jack/bin /root/.jack/certs /root/workspace
 ENV PATH="/root/.jack/bin:${PATH}"
 WORKDIR /root
 `
@@ -81,20 +82,6 @@ func SessionMounts(profile Profile, agent, repo, repoDir string) []Mount {
 		{Source: repoDir, Target: containerHome + "/workspace/" + repo, ReadOnly: false},
 	}
 
-	// Mount agent certificate and CA root for mTLS authentication.
-	if hasCert(agent) {
-		mounts = append(mounts,
-			Mount{Source: certPath(agent), Target: containerHome + "/.jack/cert.pem", ReadOnly: true},
-			Mount{Source: keyPath(agent), Target: containerHome + "/.jack/key.pem", ReadOnly: true},
-		)
-	}
-	if cfg.CA.Root != "" {
-		rootPath := expandHome(cfg.CA.Root)
-		if _, err := os.Stat(rootPath); err == nil {
-			mounts = append(mounts, Mount{Source: rootPath, Target: containerHome + "/.jack/ca.pem", ReadOnly: true})
-		}
-	}
-
 	// Mount supporting repos.
 	for _, repoURL := range profile.Repos {
 		name := repoName(repoURL)
@@ -111,7 +98,7 @@ func SessionMounts(profile Profile, agent, repo, repoDir string) []Mount {
 }
 
 // SessionEnv returns the environment variables for a session container.
-func SessionEnv(profile Profile, agent string) map[string]string {
+func SessionEnv(profile Profile, agent string, ca CAConfig) map[string]string {
 	e := make(map[string]string)
 	if agent != "" {
 		e["JACK_AGENT"] = agent
@@ -123,6 +110,15 @@ func SessionEnv(profile Profile, agent string) map[string]string {
 	if profile.Git.Email != "" {
 		e["GIT_AUTHOR_EMAIL"] = profile.Git.Email
 		e["GIT_COMMITTER_EMAIL"] = profile.Git.Email
+	}
+	if ca.URL != "" {
+		e["JACK_CA_URL"] = ca.URL
+	}
+	if ca.Fingerprint != "" {
+		e["JACK_CA_FINGERPRINT"] = ca.Fingerprint
+	}
+	if ca.Provisioner != "" {
+		e["JACK_CA_PROVISIONER"] = ca.Provisioner
 	}
 	return e
 }

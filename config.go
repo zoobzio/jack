@@ -16,9 +16,11 @@ type Config struct {
 }
 
 // CAConfig holds certificate authority settings for agent identity.
+// Containers use these values to bootstrap and issue their own certificates
+// via the step CLI — jack does not manage certs on the host.
 type CAConfig struct {
 	URL         string `yaml:"url"`
-	Root        string `yaml:"root"`
+	Fingerprint string `yaml:"fingerprint"`
 	Provisioner string `yaml:"provisioner"`
 }
 

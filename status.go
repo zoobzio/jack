@@ -55,7 +55,7 @@ func runStatus(w io.Writer, loadReg RegistryLoader, list Lister, checkContainer 
 		if i > 0 {
 			_, _ = fmt.Fprintln(w)
 		}
-		_, _ = fmt.Fprintf(w, "%s %s\n", agent, certStatusLabel(agent))
+		_, _ = fmt.Fprintf(w, "%s\n", agent)
 
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		_, _ = fmt.Fprintln(tw, "PROJECT\tSESSION\tBRANCH\tSTATUS\tCONTAINER")
@@ -126,21 +126,6 @@ func listWorktreeBranches(agent, repo string) map[string]string {
 		}
 	}
 	return result
-}
-
-func certStatusLabel(agent string) string {
-	if !hasCert(agent) {
-		return "(no cert)"
-	}
-	expiry, err := certExpiry(agent)
-	if err != nil {
-		return "(cert error)"
-	}
-	remaining := time.Until(expiry)
-	if remaining <= 0 {
-		return "(cert expired)"
-	}
-	return fmt.Sprintf("(cert expires in %s)", formatDuration(remaining))
 }
 
 func containerStatus(running, exists bool) string {

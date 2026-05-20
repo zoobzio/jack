@@ -40,52 +40,6 @@ func TestSessionMountsBase(t *testing.T) {
 	jtesting.AssertEqual(t, mounts[3].ReadOnly, false)
 }
 
-func TestSessionMountsWithCert(t *testing.T) {
-	configDir := t.TempDir()
-	dataDir := t.TempDir()
-	env = Env{ConfigDir: configDir, DataDir: dataDir}
-	cfg = Config{}
-
-	// Create the agent cert and key files so hasCert returns true.
-	agentDir := filepath.Join(configDir, "agents", "blue")
-	_ = os.MkdirAll(agentDir, 0o750)
-	_ = os.WriteFile(filepath.Join(agentDir, "cert.pem"), []byte("cert"), 0o600)
-	_ = os.WriteFile(filepath.Join(agentDir, "key.pem"), []byte("key"), 0o600)
-
-	profile := Profile{}
-	repoDir := t.TempDir()
-
-	mounts := SessionMounts(profile, "blue", "vicky", repoDir)
-
-	// base 4 + cert + key = 6
-	jtesting.AssertEqual(t, len(mounts), 6)
-	jtesting.AssertEqual(t, mounts[4].Target, "/root/.jack/cert.pem")
-	jtesting.AssertEqual(t, mounts[4].ReadOnly, true)
-	jtesting.AssertEqual(t, mounts[5].Target, "/root/.jack/key.pem")
-	jtesting.AssertEqual(t, mounts[5].ReadOnly, true)
-}
-
-func TestSessionMountsWithCARoot(t *testing.T) {
-	configDir := t.TempDir()
-	dataDir := t.TempDir()
-	env = Env{ConfigDir: configDir, DataDir: dataDir}
-
-	caPath := filepath.Join(configDir, "ca.pem")
-	_ = os.WriteFile(caPath, []byte("ca-cert"), 0o600)
-	cfg = Config{CA: CAConfig{Root: caPath}}
-
-	profile := Profile{}
-	repoDir := t.TempDir()
-
-	mounts := SessionMounts(profile, "blue", "vicky", repoDir)
-
-	// base 4 + ca root = 5
-	jtesting.AssertEqual(t, len(mounts), 5)
-	jtesting.AssertEqual(t, mounts[4].Source, caPath)
-	jtesting.AssertEqual(t, mounts[4].Target, "/root/.jack/ca.pem")
-	jtesting.AssertEqual(t, mounts[4].ReadOnly, true)
-}
-
 func TestSessionMountsWithSupportingRepos(t *testing.T) {
 	configDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -130,7 +84,7 @@ func TestSessionEnvFull(t *testing.T) {
 	profile := Profile{
 		Git: GitConfig{Name: "Rockhopper", Email: "rock@example.com"},
 	}
-	e := SessionEnv(profile, "blue")
+	e := SessionEnv(profile, "blue", CAConfig{})
 
 	jtesting.AssertEqual(t, e["JACK_AGENT"], "blue")
 	jtesting.AssertEqual(t, e["GIT_AUTHOR_NAME"], "Rockhopper")
@@ -141,7 +95,7 @@ func TestSessionEnvFull(t *testing.T) {
 
 func TestSessionEnvEmpty(t *testing.T) {
 	profile := Profile{}
-	e := SessionEnv(profile, "")
+	e := SessionEnv(profile, "", CAConfig{})
 
 	jtesting.AssertEqual(t, len(e), 0)
 }
@@ -150,13 +104,27 @@ func TestSessionEnvPartial(t *testing.T) {
 	profile := Profile{
 		Git: GitConfig{Name: "Rockhopper"},
 	}
-	e := SessionEnv(profile, "blue")
+	e := SessionEnv(profile, "blue", CAConfig{})
 
 	jtesting.AssertEqual(t, e["JACK_AGENT"], "blue")
 	jtesting.AssertEqual(t, e["GIT_AUTHOR_NAME"], "Rockhopper")
 	jtesting.AssertEqual(t, e["GIT_COMMITTER_NAME"], "Rockhopper")
 	_, hasEmail := e["GIT_AUTHOR_EMAIL"]
 	jtesting.AssertEqual(t, hasEmail, false)
+}
+
+func TestSessionEnvWithCA(t *testing.T) {
+	profile := Profile{}
+	ca := CAConfig{
+		URL:         "https://ca.example.com",
+		Fingerprint: "abc123",
+		Provisioner: "jack",
+	}
+	e := SessionEnv(profile, "blue", ca)
+
+	jtesting.AssertEqual(t, e["JACK_CA_URL"], "https://ca.example.com")
+	jtesting.AssertEqual(t, e["JACK_CA_FINGERPRINT"], "abc123")
+	jtesting.AssertEqual(t, e["JACK_CA_PROVISIONER"], "jack")
 }
 
 func TestDockerExecCmd(t *testing.T) {
