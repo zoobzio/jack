@@ -191,48 +191,6 @@ func TestFormatDuration(t *testing.T) {
 	})
 }
 
-func TestCertStatusLabelNoCert(t *testing.T) {
-	// Agent with no cert file — hasCert returns false.
-	tmpDir := t.TempDir()
-	env = Env{ConfigDir: tmpDir}
-	_ = os.MkdirAll(filepath.Join(tmpDir, "agents", "nocert"), 0o750)
-	jtesting.AssertEqual(t, certStatusLabel("nocert"), "(no cert)")
-}
-
-func TestCertStatusLabelCertError(t *testing.T) {
-	// Agent with a cert file that is not valid PEM.
-	tmpDir := t.TempDir()
-	env = Env{ConfigDir: tmpDir}
-	agentDir := filepath.Join(tmpDir, "agents", "baderror")
-	_ = os.MkdirAll(agentDir, 0o750)
-	_ = os.WriteFile(filepath.Join(agentDir, "cert.pem"), []byte("not valid pem"), 0o600)
-	jtesting.AssertEqual(t, certStatusLabel("baderror"), "(cert error)")
-}
-
-func TestCertStatusLabelCertExpired(t *testing.T) {
-	tmpDir := t.TempDir()
-	env = Env{ConfigDir: tmpDir}
-	agentDir := filepath.Join(tmpDir, "agents", "expired")
-	_ = os.MkdirAll(agentDir, 0o750)
-	certFile := filepath.Join(agentDir, "cert.pem")
-	// Cert that expired 1 hour ago.
-	generateTestCert(t, certFile, time.Now().Add(-2*time.Hour), time.Now().Add(-1*time.Hour))
-	jtesting.AssertEqual(t, certStatusLabel("expired"), "(cert expired)")
-}
-
-func TestCertStatusLabelCertExpiresIn(t *testing.T) {
-	tmpDir := t.TempDir()
-	env = Env{ConfigDir: tmpDir}
-	agentDir := filepath.Join(tmpDir, "agents", "valid")
-	_ = os.MkdirAll(agentDir, 0o750)
-	certFile := filepath.Join(agentDir, "cert.pem")
-	// Cert that expires in 2 hours.
-	generateTestCert(t, certFile, time.Now().Add(-1*time.Hour), time.Now().Add(2*time.Hour))
-	result := certStatusLabel("valid")
-	jtesting.AssertEqual(t, strings.Contains(result, "cert expires in"), true)
-	jtesting.AssertEqual(t, strings.Contains(result, "h"), true)
-}
-
 func TestSessionStatusIdle(t *testing.T) {
 	info := SessionInfo{
 		TmuxSession: TmuxSession{

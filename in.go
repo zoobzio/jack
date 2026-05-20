@@ -1,7 +1,6 @@
 package jack
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -99,13 +98,6 @@ func runIn(agent, project, branch string, loadReg RegistryLoader, selAgent Agent
 	dir := filepath.Join(env.dataDir(), agent, project)
 	containerName := ContainerName(agent, project)
 
-	// Renew agent certificate if expiring soon.
-	if cfg.CA.URL != "" && certNeedsRenewal(agent, renewThreshold) {
-		if renewErr := renewCert(context.Background(), agent); renewErr != nil {
-			fmt.Fprintf(os.Stderr, "warning: cert renewal failed for %s: %v\n", agent, renewErr)
-		}
-	}
-
 	// Sync Claude OAuth credentials from keychain to disk.
 	if err := syncClaudeCredentials(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not sync claude credentials: %v\n", err)
@@ -121,10 +113,19 @@ func runIn(agent, project, branch string, loadReg RegistryLoader, selAgent Agent
 			ReadOnly: true,
 		})
 		volumes := []Volume{ToolsVolume(agent, project)}
-		envVars := SessionEnv(profile, agent)
+		envVars := SessionEnv(profile, agent, cfg.CA)
 
 		if err := runContainer(containerName, mounts, volumes, envVars); err != nil {
 			return fmt.Errorf("starting container: %w", err)
+		}
+
+		// Bootstrap agent certificate inside the container if CA is configured.
+		if cfg.CA.URL != "" {
+			fmt.Println("bootstrapping agent certificate...")
+			if err := execContainer(containerName, certBootstrapCmd()); err != nil {
+				_ = stopContainer(containerName)
+				return fmt.Errorf("bootstrapping agent certificate: %w", err)
+			}
 		}
 
 		// Run setup scripts on fresh container start.
@@ -188,6 +189,23 @@ type setupScript struct {
 	hostPath      string
 	containerPath string
 	label         string
+}
+
+// certBootstrapCmd returns the command to bootstrap and issue a certificate
+// inside the container. It uses JACK_CA_URL, JACK_CA_FINGERPRINT,
+// JACK_CA_PROVISIONER, and JACK_AGENT env vars injected by SessionEnv.
+// The cert and key are written to /root/.jack/certs/ and a renewal daemon
+// is started in the background.
+func certBootstrapCmd() []string {
+	const script = `set -e
+step ca bootstrap --ca-url "$JACK_CA_URL" --fingerprint "$JACK_CA_FINGERPRINT" --force
+step ca certificate "$JACK_AGENT" /root/.jack/certs/cert.pem /root/.jack/certs/key.pem \
+  --provisioner "$JACK_CA_PROVISIONER" --force
+step ca renew --daemon \
+  --cert /root/.jack/certs/cert.pem \
+  --key /root/.jack/certs/key.pem &
+`
+	return []string{"sh", "-c", script}
 }
 
 // setupScripts returns the ordered list of setup scripts to run on jack in.

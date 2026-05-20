@@ -58,6 +58,7 @@ profiles:
       email: rock@example.com
 ca:
   url: https://ca.example.com
+  fingerprint: abc123def456
   provisioner: myprovisioner
 `
 	err := os.WriteFile(configFile, []byte(content), 0o600)
@@ -70,6 +71,7 @@ ca:
 	jtesting.AssertEqual(t, cfg.Profiles["blue"].Git.Name, "Rockhopper")
 	jtesting.AssertEqual(t, cfg.Profiles["blue"].Git.Email, "rock@example.com")
 	jtesting.AssertEqual(t, cfg.CA.URL, "https://ca.example.com")
+	jtesting.AssertEqual(t, cfg.CA.Fingerprint, "abc123def456")
 	jtesting.AssertEqual(t, cfg.CA.Provisioner, "myprovisioner")
 }
 
