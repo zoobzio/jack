@@ -98,11 +98,6 @@ func runIn(agent, project, branch string, loadReg RegistryLoader, selAgent Agent
 	dir := filepath.Join(env.dataDir(), agent, project)
 	containerName := ContainerName(agent, project)
 
-	// Sync Claude OAuth credentials from keychain to disk.
-	if err := syncClaudeCredentials(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not sync claude credentials: %v\n", err)
-	}
-
 	// Ensure the container is running (may already be up for another worktree).
 	running, _ := checkContainer(containerName)
 	if !running {
