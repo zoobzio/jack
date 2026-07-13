@@ -138,6 +138,40 @@ func TestNewSpecModel(t *testing.T) {
 	}
 }
 
+func TestNewSpecColorterm(t *testing.T) {
+	env := &config.Env{ConfigDir: t.TempDir(), DataDir: t.TempDir()}
+	id, err := domain.NewIdentity(domain.Agent("scout"), domain.Repo("myrepo"))
+	if err != nil {
+		t.Fatalf("NewIdentity: %v", err)
+	}
+
+	// Propagates the host value when set.
+	t.Run("propagates", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("COLORTERM", "24bit")
+		spec, err := NewSpec(id, config.Profile{}, env, config.CAConfig{})
+		if err != nil {
+			t.Fatalf("NewSpec: %v", err)
+		}
+		if spec.Env["COLORTERM"] != "24bit" {
+			t.Errorf("COLORTERM = %q, want 24bit", spec.Env["COLORTERM"])
+		}
+	})
+
+	// Defaults to truecolor when the host has none.
+	t.Run("defaults", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("COLORTERM", "")
+		spec, err := NewSpec(id, config.Profile{}, env, config.CAConfig{})
+		if err != nil {
+			t.Fatalf("NewSpec: %v", err)
+		}
+		if spec.Env["COLORTERM"] != "truecolor" {
+			t.Errorf("COLORTERM = %q, want truecolor", spec.Env["COLORTERM"])
+		}
+	})
+}
+
 func TestNewSpecMinimal(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

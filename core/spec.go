@@ -76,6 +76,16 @@ func NewSpec(id *domain.Identity, profile config.Profile, env *config.Env, ca co
 	}
 
 	session := map[string]string{"JACK_AGENT": string(id.Agent())}
+
+	// docker exec does not inherit the host's COLORTERM, so claude can't detect
+	// 24-bit color support inside the container. Propagate it, defaulting to
+	// truecolor so it is always set.
+	colorterm := os.Getenv("COLORTERM")
+	if colorterm == "" {
+		colorterm = "truecolor"
+	}
+	session["COLORTERM"] = colorterm
+
 	if profile.Git.Name != "" {
 		session["GIT_AUTHOR_NAME"] = profile.Git.Name
 		session["GIT_COMMITTER_NAME"] = profile.Git.Name
