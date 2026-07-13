@@ -1,0 +1,157 @@
+package handler
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/charmbracelet/huh"
+	"github.com/spf13/cobra"
+
+	"github.com/zoobzio/jack/config"
+	"github.com/zoobzio/jack/core"
+	"github.com/zoobzio/jack/domain"
+	"github.com/zoobzio/jack/tools"
+)
+
+// In builds the `jack in` command and mounts it onto the app's root command.
+func In(app *core.App) {
+	cmd := &cobra.Command{
+		Use:   "in",
+		Short: "Enter a session",
+		Long:  "Attach to an existing session or create one.\nWith no arguments, interactively select an agent and project.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			agent, _ := cmd.Flags().GetString("agent")
+			project, _ := cmd.Flags().GetString("project")
+			return in(cmd.Context(), app, domain.Agent(agent), domain.Repo(project))
+		},
+	}
+	cmd.Flags().StringP("agent", "a", "", "agent name")
+	cmd.Flags().StringP("project", "p", "", "project name")
+	app.Root().AddCommand(cmd)
+}
+
+// in attaches to a session, creating it (and its container) on demand. An empty
+// agent or project is resolved from the registry, interactively when there is
+// more than one choice.
+func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo) error {
+	reg, err := config.NewRegistry(app.Env().RegistryPath)
+	if err != nil {
+		return fmt.Errorf("loading registry: %w", err)
+	}
+
+	// Resolve the agent: given, sole, or chosen.
+	if agent == "" {
+		agents := reg.Agents()
+		switch len(agents) {
+		case 0:
+			return fmt.Errorf("no projects cloned — run jack clone first")
+		case 1:
+			agent = agents[0]
+		default:
+			opts := make([]string, len(agents))
+			for i, a := range agents {
+				opts[i] = string(a)
+			}
+			var chosen string
+			if serr := huh.NewSelect[string]().
+				Title("Select an agent").
+				Options(huh.NewOptions(opts...)...).
+				Value(&chosen).
+				Run(); serr != nil {
+				return fmt.Errorf("selecting agent: %w", serr)
+			}
+			agent = domain.Agent(chosen)
+		}
+	}
+
+	// Resolve the project for that agent: given, sole, or chosen.
+	if repo == "" {
+		repos := reg.ReposForAgent(agent)
+		switch len(repos) {
+		case 0:
+			return fmt.Errorf("no projects cloned for agent %q", agent)
+		case 1:
+			repo = repos[0]
+		default:
+			opts := make([]string, len(repos))
+			for i, r := range repos {
+				opts[i] = string(r)
+			}
+			var chosen string
+			if serr := huh.NewSelect[string]().
+				Title(fmt.Sprintf("Select a project for %s", agent)).
+				Options(huh.NewOptions(opts...)...).
+				Value(&chosen).
+				Run(); serr != nil {
+				return fmt.Errorf("selecting project: %w", serr)
+			}
+			repo = domain.Repo(chosen)
+		}
+	}
+
+	profile, ok := app.Config().Profiles[agent]
+	if !ok {
+		return fmt.Errorf("unknown agent %q (no matching profile)", agent)
+	}
+
+	id, err := domain.NewIdentity(agent, repo)
+	if err != nil {
+		return err
+	}
+
+	// Attach to the session if it already exists.
+	if has, herr := app.Tmux().Has(ctx, id.Session); herr != nil {
+		return herr
+	} else if has {
+		return app.Tmux().Attach(ctx, id.Session)
+	}
+
+	scr := tools.For(id)
+
+	// Ensure the container is up.
+	running, _ := app.Docker().Running(ctx, id.Container)
+	if !running {
+		spec, serr := core.NewSpec(id, profile, app.Env(), app.Config().CA)
+		if serr != nil {
+			return serr
+		}
+		if rerr := app.Docker().Run(ctx, *spec); rerr != nil {
+			return fmt.Errorf("starting container: %w", rerr)
+		}
+
+		// Bootstrap the agent certificate when a CA is configured; its renew
+		// daemon then keeps it fresh for the life of the container.
+		if app.Config().CA.URL != "" {
+			fmt.Println("bootstrapping agent certificate...")
+			if berr := app.Docker().Exec(ctx, id.Container, scr.Bootstrap()); berr != nil {
+				_ = app.Docker().Stop(ctx, id.Container)
+				return fmt.Errorf("bootstrapping agent certificate: %w", berr)
+			}
+		}
+
+		// Run the setup scripts that exist on the host, in order.
+		for _, s := range scr.Setup(app.Env().ConfigDir) {
+			if _, statErr := os.Stat(s.HostPath); statErr != nil {
+				continue
+			}
+			fmt.Printf("running %s...\n", s.Label)
+			if eerr := app.Docker().Exec(ctx, id.Container, s.Command); eerr != nil {
+				_ = app.Docker().Stop(ctx, id.Container)
+				return fmt.Errorf("running %s: %w", s.Label, eerr)
+			}
+		}
+	}
+
+	// tmux drives a `docker exec` into the session's workdir.
+	tmuxCmd := fmt.Sprintf("docker exec -it -w %s %s claude", id.RepoPath(), id.Container)
+	if cerr := app.Tmux().Create(ctx, id.Session, tmuxCmd); cerr != nil {
+		if !running {
+			_ = app.Docker().Stop(ctx, id.Container)
+		}
+		return cerr
+	}
+
+	return app.Tmux().Attach(ctx, id.Session)
+}
