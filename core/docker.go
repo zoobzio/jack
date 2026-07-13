@@ -35,6 +35,9 @@ type Docker interface {
 	Exec(ctx context.Context, name string, cmd []string) error
 	// Stop stops and removes a container.
 	Stop(ctx context.Context, name string) error
+	// RemoveVolume removes a named volume; a volume that does not exist is not
+	// an error.
+	RemoveVolume(ctx context.Context, name string) error
 	// Running reports whether the named container is currently running. A
 	// stopped container returns (false, nil); a container that does not exist
 	// (or a docker failure) returns a non-nil error.
@@ -148,6 +151,21 @@ func (d *docker) Stop(ctx context.Context, name string) error {
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker rm: %w: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
+// RemoveVolume removes the named volume with `docker volume rm --force`, which
+// treats a missing volume as success. Errors carry docker's stderr.
+func (d *docker) RemoveVolume(ctx context.Context, name string) error {
+	cmd := exec.CommandContext(ctx, "docker", "volume", "rm", "--force", name)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker volume rm: %w: %s", err, stderr.String())
 	}
 
 	return nil

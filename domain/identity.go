@@ -52,3 +52,10 @@ func (i *Identity) Repo() Repo { return i.repo }
 func (i *Identity) RepoPath() string {
 	return ContainerHome + "/workspace/" + string(i.repo)
 }
+
+// ToolsVolume returns the name of the persistent Docker volume that holds the
+// session's installed tools. It is derived from the container name so the Spec
+// builder and teardown agree on it.
+func (i *Identity) ToolsVolume() string {
+	return i.Container + "-tools"
+}

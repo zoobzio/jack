@@ -22,6 +22,9 @@ func TestNewIdentityMainClone(t *testing.T) {
 	if got, want := id.RepoPath(), "/root/workspace/repo"; got != want {
 		t.Errorf("RepoPath() = %q, want %q", got, want)
 	}
+	if got, want := id.ToolsVolume(), "jack-claude-repo-tools"; got != want {
+		t.Errorf("ToolsVolume() = %q, want %q", got, want)
+	}
 }
 
 func TestNewIdentityErrors(t *testing.T) {

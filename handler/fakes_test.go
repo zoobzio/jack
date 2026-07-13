@@ -39,18 +39,20 @@ type configCall struct {
 // fakeDocker is a recording stand-in for core.Docker. Every method records its
 // call and returns the configured result/error.
 type fakeDocker struct {
-	BuildCalls int
-	RunSpecs   []core.Spec
-	ExecCalls  []execCall
-	StopNames  []string
+	BuildCalls        int
+	RunSpecs          []core.Spec
+	ExecCalls         []execCall
+	StopNames         []string
+	RemoveVolumeNames []string
 
 	RunningResult bool
 	RunningErr    error
 
-	BuildErr error
-	RunErr   error
-	ExecErr  error
-	StopErr  error
+	BuildErr        error
+	RunErr          error
+	ExecErr         error
+	StopErr         error
+	RemoveVolumeErr error
 }
 
 func (d *fakeDocker) Build(_ context.Context) error {
@@ -71,6 +73,11 @@ func (d *fakeDocker) Exec(_ context.Context, name string, cmd []string) error {
 func (d *fakeDocker) Stop(_ context.Context, name string) error {
 	d.StopNames = append(d.StopNames, name)
 	return d.StopErr
+}
+
+func (d *fakeDocker) RemoveVolume(_ context.Context, name string) error {
+	d.RemoveVolumeNames = append(d.RemoveVolumeNames, name)
+	return d.RemoveVolumeErr
 }
 
 func (d *fakeDocker) Running(_ context.Context, _ string) (bool, error) {

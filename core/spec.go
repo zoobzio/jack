@@ -71,7 +71,7 @@ func NewSpec(id *domain.Identity, profile config.Profile, env *config.Env, ca co
 	}
 
 	tools := Volume{
-		Name:   id.Container + "-tools",
+		Name:   id.ToolsVolume(),
 		Target: home + "/.jack/bin",
 	}
 
