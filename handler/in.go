@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
 	"github.com/zoobzio/jack/config"
@@ -41,59 +40,18 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 		return fmt.Errorf("loading registry: %w", err)
 	}
 
-	// Resolve the agent: given, sole, or chosen.
-	if agent == "" {
-		agents := reg.Agents()
-		switch len(agents) {
-		case 0:
-			return fmt.Errorf("no projects cloned — run jack clone first")
-		case 1:
-			agent = agents[0]
-		default:
-			opts := make([]string, len(agents))
-			for i, a := range agents {
-				opts[i] = string(a)
-			}
-			var chosen string
-			if serr := huh.NewSelect[string]().
-				Title("Select an agent").
-				Options(huh.NewOptions(opts...)...).
-				Value(&chosen).
-				Run(); serr != nil {
-				return fmt.Errorf("selecting agent: %w", serr)
-			}
-			agent = domain.Agent(chosen)
-		}
-	}
-
-	// Resolve the project for that agent: given, sole, or chosen.
-	if repo == "" {
-		repos := reg.ReposForAgent(agent)
-		switch len(repos) {
-		case 0:
-			return fmt.Errorf("no projects cloned for agent %q", agent)
-		case 1:
-			repo = repos[0]
-		default:
-			opts := make([]string, len(repos))
-			for i, r := range repos {
-				opts[i] = string(r)
-			}
-			var chosen string
-			if serr := huh.NewSelect[string]().
-				Title(fmt.Sprintf("Select a project for %s", agent)).
-				Options(huh.NewOptions(opts...)...).
-				Value(&chosen).
-				Run(); serr != nil {
-				return fmt.Errorf("selecting project: %w", serr)
-			}
-			repo = domain.Repo(chosen)
-		}
+	agent, repo, err = resolve(reg, agent, repo)
+	if err != nil {
+		return err
 	}
 
 	profile, ok := app.Config().Profiles[agent]
 	if !ok {
 		return fmt.Errorf("unknown agent %q (no matching profile)", agent)
+	}
+	// Fall back to the top-level default model when the profile sets none.
+	if profile.Model == "" {
+		profile.Model = app.Config().Model
 	}
 
 	id, err := domain.NewIdentity(agent, repo)

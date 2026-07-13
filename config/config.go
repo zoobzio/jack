@@ -15,6 +15,7 @@ import (
 type Config struct {
 	Profiles map[domain.Agent]Profile `yaml:"profiles"`
 	CA       CAConfig                 `yaml:"ca"`
+	Model    string                   `yaml:"model"` // default Claude model when a profile sets none
 }
 
 // CAConfig holds certificate authority settings for agent identity.
@@ -31,6 +32,7 @@ type Profile struct {
 	Git    GitConfig    `yaml:"git"`
 	GitHub GitHubConfig `yaml:"github"`
 	Repos  []string     `yaml:"repos"`
+	Model  string       `yaml:"model"` // Claude model for this agent; overrides Config.Model, empty = Claude Code default
 }
 
 // GitConfig holds git identity settings.

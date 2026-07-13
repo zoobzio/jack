@@ -110,6 +110,34 @@ func TestNewSpec(t *testing.T) {
 	}
 }
 
+func TestNewSpecModel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	env := &config.Env{ConfigDir: t.TempDir(), DataDir: t.TempDir()}
+
+	id, err := domain.NewIdentity(domain.Agent("scout"), domain.Repo("myrepo"))
+	if err != nil {
+		t.Fatalf("NewIdentity: %v", err)
+	}
+
+	// A profile with a model sets ANTHROPIC_MODEL.
+	spec, err := NewSpec(id, config.Profile{Model: "claude-opus-4-8"}, env, config.CAConfig{})
+	if err != nil {
+		t.Fatalf("NewSpec: %v", err)
+	}
+	if spec.Env["ANTHROPIC_MODEL"] != "claude-opus-4-8" {
+		t.Errorf("ANTHROPIC_MODEL = %q, want claude-opus-4-8", spec.Env["ANTHROPIC_MODEL"])
+	}
+
+	// A profile with no model leaves ANTHROPIC_MODEL unset.
+	spec, err = NewSpec(id, config.Profile{}, env, config.CAConfig{})
+	if err != nil {
+		t.Fatalf("NewSpec: %v", err)
+	}
+	if _, ok := spec.Env["ANTHROPIC_MODEL"]; ok {
+		t.Errorf("ANTHROPIC_MODEL set unexpectedly = %q", spec.Env["ANTHROPIC_MODEL"])
+	}
+}
+
 func TestNewSpecMinimal(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

@@ -93,6 +93,9 @@ func NewSpec(id *domain.Identity, profile config.Profile, env *config.Env, ca co
 	if ca.Provisioner != "" {
 		session["JACK_CA_PROVISIONER"] = ca.Provisioner
 	}
+	if profile.Model != "" {
+		session["ANTHROPIC_MODEL"] = profile.Model
+	}
 
 	return &Spec{
 		Name:    id.Container,
