@@ -49,9 +49,12 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 	if !ok {
 		return fmt.Errorf("unknown agent %q (no matching profile)", agent)
 	}
-	// Fall back to the top-level default model when the profile sets none.
+	// Fall back to the top-level defaults when the profile sets none.
 	if profile.Model == "" {
 		profile.Model = app.Config().Model
+	}
+	if profile.Permission == "" {
+		profile.Permission = app.Config().Permission
 	}
 
 	id, err := domain.NewIdentity(agent, repo)
@@ -102,8 +105,13 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 		}
 	}
 
-	// tmux drives a `docker exec` into the session's workdir.
-	tmuxCmd := fmt.Sprintf("docker exec -it -w %s %s claude", id.RepoPath(), id.Container)
+	// tmux drives a `docker exec` into the session's workdir, launching claude in
+	// the agent's permission mode.
+	launch := "claude"
+	if flags := profile.Permission.Flags(); flags != "" {
+		launch += " " + flags
+	}
+	tmuxCmd := fmt.Sprintf("docker exec -it -w %s %s %s", id.RepoPath(), id.Container, launch)
 	if cerr := app.Tmux().Create(ctx, id.Session, tmuxCmd); cerr != nil {
 		if !running {
 			_ = app.Docker().Stop(ctx, id.Container)

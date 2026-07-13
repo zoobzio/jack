@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/zoobzio/jack/config"
@@ -96,6 +97,51 @@ func TestInModelResolution(t *testing.T) {
 		}
 		if got := d.RunSpecs[0].Env["ANTHROPIC_MODEL"]; got != "claude-opus-4-8" {
 			t.Errorf("ANTHROPIC_MODEL = %q, want claude-opus-4-8 (profile override)", got)
+		}
+	})
+}
+
+func TestInPermissionResolution(t *testing.T) {
+	// The top-level default flows into the launch command when the profile is bare.
+	t.Run("default", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		cfg := &config.Config{
+			Permission: config.PermissionBypass,
+			Profiles:   map[domain.Agent]config.Profile{"alex": {}},
+		}
+		tm := &fakeTmux{HasResult: false}
+		app := testApp(testEnv(t), cfg, &fakeDocker{RunningResult: false}, tm, &fakeGit{})
+
+		if err := in(context.Background(), app, "alex", "jack"); err != nil {
+			t.Fatalf("in returned error: %v", err)
+		}
+		if len(tm.CreateCalls) != 1 {
+			t.Fatalf("Create calls = %d, want 1", len(tm.CreateCalls))
+		}
+		if !strings.Contains(tm.CreateCalls[0].Cmd, "--dangerously-skip-permissions") {
+			t.Errorf("launch cmd = %q, want it to contain --dangerously-skip-permissions", tm.CreateCalls[0].Cmd)
+		}
+	})
+
+	// A per-profile permission overrides the top-level default.
+	t.Run("override", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		cfg := &config.Config{
+			Permission: config.PermissionBypass,
+			Profiles:   map[domain.Agent]config.Profile{"alex": {Permission: config.PermissionAcceptEdits}},
+		}
+		tm := &fakeTmux{HasResult: false}
+		app := testApp(testEnv(t), cfg, &fakeDocker{RunningResult: false}, tm, &fakeGit{})
+
+		if err := in(context.Background(), app, "alex", "jack"); err != nil {
+			t.Fatalf("in returned error: %v", err)
+		}
+		cmd := tm.CreateCalls[0].Cmd
+		if !strings.Contains(cmd, "--permission-mode acceptEdits") {
+			t.Errorf("launch cmd = %q, want --permission-mode acceptEdits", cmd)
+		}
+		if strings.Contains(cmd, "dangerously") {
+			t.Errorf("launch cmd = %q, should not contain the bypass flag", cmd)
 		}
 	})
 }
