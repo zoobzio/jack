@@ -214,7 +214,7 @@ func TestNewSpecSupportRepoOnDisk(t *testing.T) {
 
 	// Create the support repo dir on disk so it is mounted.
 	supportDir := filepath.Join(dataDir, "scout", "other")
-	if err := os.MkdirAll(supportDir, 0o755); err != nil {
+	if err := os.MkdirAll(supportDir, 0o750); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 

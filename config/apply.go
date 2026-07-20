@@ -1,3 +1,6 @@
+// Package config loads and validates jack's YAML configuration, resolves the
+// host environment (data, config, and registry paths), tracks cloned agents in
+// the registry, and applies each agent's config into its workspace.
 package config
 
 import (

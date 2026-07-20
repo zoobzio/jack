@@ -1,3 +1,6 @@
+// Package core wires the jack application together: it resolves the environment
+// and config, holds the Docker, Tmux, and Git boundaries to the host CLIs, and
+// builds the container Spec that describes each agent-repo session.
 package core
 
 import (

@@ -1,4 +1,4 @@
-.PHONY: build install test test-unit test-integration test-bench lint lint-fix security coverage clean help check ci install-tools install-hooks
+.PHONY: build install test test-unit lint lint-fix security coverage clean help check ci install-tools install-hooks
 
 .DEFAULT_GOAL := help
 
@@ -18,12 +18,6 @@ test: ## Run all tests with race detector
 
 test-unit: ## Run unit tests only (short mode)
 	@go test -v -race -tags testing -short ./...
-
-test-integration: ## Run integration tests
-	@go test -v -race -tags testing ./testing/integration/...
-
-test-bench: ## Run benchmarks
-	@go test -tags testing -bench=. -benchmem -benchtime=1s ./testing/benchmarks/...
 
 lint: ## Run linters
 	@golangci-lint run --config=.golangci.yml --timeout=5m
@@ -61,5 +55,5 @@ install-hooks: ## Install git pre-commit hook
 check: lint test security ## Run lint, tests, and security scan
 	@echo "All checks passed!"
 
-ci: clean check coverage test-bench ## Full CI simulation
+ci: clean check coverage ## Full CI simulation
 	@echo "CI simulation complete!"

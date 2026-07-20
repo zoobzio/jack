@@ -32,7 +32,7 @@ type Tmux interface {
 type tmux struct{}
 
 // NewTmux returns a Tmux backed by the local tmux CLI.
-func NewTmux() *tmux {
+func NewTmux() Tmux {
 	return &tmux{}
 }
 

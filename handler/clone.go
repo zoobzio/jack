@@ -1,3 +1,6 @@
+// Package handler implements jack's CLI command handlers — clone, in, out,
+// kill, status, and the identity resolution they share — translating cobra
+// invocations into calls against the core application boundaries.
 package handler
 
 import (
@@ -48,8 +51,8 @@ func clone(ctx context.Context, app *core.App, url string, agents []domain.Agent
 		return err
 	}
 
-	if err := app.Docker().Build(ctx); err != nil {
-		return fmt.Errorf("building jack image: %w", err)
+	if buildErr := app.Docker().Build(ctx); buildErr != nil {
+		return fmt.Errorf("building jack image: %w", buildErr)
 	}
 
 	reg, err := config.NewRegistry(app.Env().RegistryPath)

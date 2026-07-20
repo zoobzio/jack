@@ -16,8 +16,8 @@ import (
 // for progress output.
 type Setup struct {
 	HostPath string
-	Command  []string
 	Label    string
+	Command  []string
 }
 
 // Commands builds the container-side commands for a single session identity.

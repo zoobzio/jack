@@ -31,10 +31,10 @@ type Volume struct {
 // the builder functions below from the domain (Identity, Profile, Env) and
 // consumed by Docker.Run, which formats it into docker CLI arguments.
 type Spec struct {
+	Env     map[string]string
 	Name    string
 	Mounts  []Mount
 	Volumes []Volume
-	Env     map[string]string
 }
 
 // NewSpec assembles the container Spec for an agent-repo session: the container

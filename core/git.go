@@ -22,7 +22,7 @@ type Git interface {
 type git struct{}
 
 // NewGit returns a Git backed by the local git CLI.
-func NewGit() *git {
+func NewGit() Git {
 	return &git{}
 }
 

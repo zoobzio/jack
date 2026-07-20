@@ -1,3 +1,6 @@
+// Package domain holds jack's core value types — Agent, Repo, Identity, and the
+// container layout — each carrying its own validation so the rules travel with
+// the type rather than living in generic helpers.
 package domain
 
 import (

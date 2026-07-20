@@ -29,13 +29,13 @@ func TestApplyAgentCopiesRecursively(t *testing.T) {
 
 	dstBase := filepath.Join(dataDir, "alex", ".claude")
 
-	if got, err := os.ReadFile(filepath.Join(dstBase, "CLAUDE.md")); err != nil {
+	if got, err := os.ReadFile(filepath.Join(dstBase, "CLAUDE.md")); err != nil { //nolint:gosec // path is under t.TempDir()
 		t.Errorf("reading copied CLAUDE.md: %v", err)
 	} else if string(got) != "top-level" {
 		t.Errorf("CLAUDE.md content = %q, want %q", got, "top-level")
 	}
 
-	if got, err := os.ReadFile(filepath.Join(dstBase, "commands", "do.md")); err != nil {
+	if got, err := os.ReadFile(filepath.Join(dstBase, "commands", "do.md")); err != nil { //nolint:gosec // path is under t.TempDir()
 		t.Errorf("reading nested copied file: %v", err)
 	} else if string(got) != "nested" {
 		t.Errorf("nested file content = %q, want %q", got, "nested")
@@ -73,7 +73,7 @@ func TestApplyAgentReplacesStaleFiles(t *testing.T) {
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Errorf("stale file still present (err=%v), want removed", err)
 	}
-	if got, err := os.ReadFile(filepath.Join(dstBase, "CLAUDE.md")); err != nil {
+	if got, err := os.ReadFile(filepath.Join(dstBase, "CLAUDE.md")); err != nil { //nolint:gosec // path is under t.TempDir()
 		t.Errorf("reading copied CLAUDE.md: %v", err)
 	} else if string(got) != "fresh" {
 		t.Errorf("CLAUDE.md content = %q, want %q", got, "fresh")

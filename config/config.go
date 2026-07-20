@@ -32,9 +32,9 @@ type CAConfig struct {
 type Profile struct {
 	Git        GitConfig    `yaml:"git"`
 	GitHub     GitHubConfig `yaml:"github"`
-	Repos      []string     `yaml:"repos"`
 	Model      string       `yaml:"model"`      // Claude model for this agent; overrides Config.Model, empty = Claude Code default
 	Permission Permission   `yaml:"permission"` // permission mode for this agent; overrides Config.Permission
+	Repos      []string     `yaml:"repos"`
 }
 
 // GitConfig holds git identity settings.

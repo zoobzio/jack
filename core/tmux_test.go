@@ -13,7 +13,7 @@ func TestTmuxParse(t *testing.T) {
 	output := "alpha\t1000000000\t1000000500\t/home/a\t1\t3\n" +
 		"beta\t1000000100\t1000000200\t/home/b\t0\t1\n"
 
-	tm := NewTmux()
+	tm := tmux{}
 	got, err := tm.parse(output)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -34,7 +34,7 @@ func TestTmuxParse(t *testing.T) {
 }
 
 func TestTmuxParseEmpty(t *testing.T) {
-	tm := NewTmux()
+	tm := tmux{}
 	got, err := tm.parse("")
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -45,7 +45,7 @@ func TestTmuxParseEmpty(t *testing.T) {
 }
 
 func TestTmuxParseMalformed(t *testing.T) {
-	tm := NewTmux()
+	tm := tmux{}
 	// Only three fields instead of six -> NewSession returns an error.
 	if _, err := tm.parse("alpha\t1000000000\t1000000500\n"); err == nil {
 		t.Fatal("expected error for malformed line, got nil")
@@ -53,7 +53,7 @@ func TestTmuxParseMalformed(t *testing.T) {
 }
 
 func TestTmuxParseBadTimestamp(t *testing.T) {
-	tm := NewTmux()
+	tm := tmux{}
 	if _, err := tm.parse("alpha\tnotanumber\t1000000500\t/home/a\t1\t3\n"); err == nil {
 		t.Fatal("expected error for non-numeric timestamp, got nil")
 	}

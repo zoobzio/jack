@@ -55,7 +55,7 @@ type docker struct {
 // step CLI, and Claude Code, plus the /root layout the Spec builders target —
 // its paths (WORKDIR, the mkdir'd dirs) are the contract the mount targets must
 // match.
-func NewDocker() *docker {
+func NewDocker() Docker {
 	return &docker{
 		image:      image,
 		dockerfile: dockerfile,

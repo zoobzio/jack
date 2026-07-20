@@ -3,9 +3,9 @@ package core
 import "testing"
 
 func TestNewDockerConfigured(t *testing.T) {
-	d := NewDocker()
-	if d == nil {
-		t.Fatal("NewDocker returned nil")
+	d, ok := NewDocker().(*docker)
+	if !ok {
+		t.Fatal("NewDocker did not return a *docker")
 	}
 	if d.image == "" {
 		t.Error("docker image is empty")
@@ -21,6 +21,6 @@ func TestNewDockerConfigured(t *testing.T) {
 	}
 }
 
-func TestNewDockerSatisfiesInterface(t *testing.T) {
-	var _ Docker = NewDocker()
+func TestNewDockerSatisfiesInterface(_ *testing.T) {
+	var _ Docker = (*docker)(nil)
 }
