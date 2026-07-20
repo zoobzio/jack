@@ -129,6 +129,10 @@ type fakeGit struct {
 	CloneCalls  []cloneCall
 	ConfigCalls []configCall
 
+	IdentityName  string
+	IdentityEmail string
+	IdentityErr   error
+
 	CloneErr  error
 	ConfigErr error
 }
@@ -141,6 +145,10 @@ func (g *fakeGit) Clone(_ context.Context, url, dir string) error {
 func (g *fakeGit) Config(_ context.Context, dir, key, value string) error {
 	g.ConfigCalls = append(g.ConfigCalls, configCall{Dir: dir, Key: key, Value: value})
 	return g.ConfigErr
+}
+
+func (g *fakeGit) GlobalIdentity(_ context.Context) (name, email string, err error) {
+	return g.IdentityName, g.IdentityEmail, g.IdentityErr
 }
 
 // testEnv builds a config.Env whose directories live under a fresh t.TempDir(),

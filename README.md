@@ -94,6 +94,8 @@ Prebuilt binaries for Linux and macOS (amd64/arm64) are attached to each [releas
 
 jack reads a single config file, `~/.config/jack/config.yaml`, plus an optional tree of per-agent and per-project scripts alongside it. Override the locations with `JACK_CONFIG_DIR` and `JACK_DATA_DIR` (both must be absolute paths).
 
+Run [`jack init`](#set-up-jack) to generate this file and the surrounding tree automatically — the rest of this section describes what it produces.
+
 ### `config.yaml`
 
 ```yaml
@@ -173,6 +175,7 @@ jack manages this tree itself; you don't edit it by hand:
 ## Usage
 
 ```
+jack init  [--agent] [--git-name] [--git-email] [--github] [--build]  Scaffold config
 jack clone <url> --agent <name>...   Clone a repo into one or more agents' workspaces
 jack in    [--agent] [--project]     Enter (attach or create) a session
 jack out   [name | --agent --project]  Terminate a session and stop its container
@@ -181,6 +184,19 @@ jack status                          Show agents, sessions, and containers
 ```
 
 Commands that address an existing agent-repo (`in`, `kill`) resolve missing `--agent`/`--project` flags from the registry — automatically when there's one option, interactively when there's more than one.
+
+### Set up jack
+
+```sh
+jack init                          # prompt for anything not given (agent, git identity, GitHub user)
+jack init --agent alex --github zoobzio   # take those from flags, prompt only for the rest
+jack init --agent alex --git-name "Alex T" --git-email alex@zoobz.io --github zoobzio  # fully non-interactive
+jack init --build                  # also build the base Docker image now
+```
+
+`init` is the first thing you run on a new machine. It checks that `docker`, `tmux`, and `git` are installed, then creates the config tree — `~/.config/jack/` with a starter `config.yaml`, an `agents/<name>/CLAUDE.md`, and a `projects/` dir — plus the `~/.jack/` data dir. `init` never overwrites files that already exist, so it is safe to re-run.
+
+Values come from flags first. Anything you don't pass is filled in interactively when you're at a terminal — a short prompt for the agent name, git identity, and GitHub user, each **prefilled** from your global git identity (`git config --global user.name`/`user.email`) so you usually just confirm. When there's no terminal (scripts, CI) it skips the prompts and uses those seeded defaults, so passing every value via flags makes `init` fully non-interactive.
 
 ### Clone a repo for an agent
 
