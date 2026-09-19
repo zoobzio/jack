@@ -164,7 +164,9 @@ Setup scripts run in order on each fresh container — **global → agent → pr
 
 #### Shared skills
 
-An [Agent Skill](https://code.claude.com/docs/en/skills) placed in the top-level `skills/` dir is copied into **every** agent's workspace alongside its own config, so a skill authored once is available to all agents without duplicating it into each `agents/<name>/`. Because the workspace config is mounted one level above the checkout, Claude Code discovers these at `.claude/skills/<name>/` through the same directory-inheritance that carries `CLAUDE.md` and `commands/`. A skill is copied as an atomic unit — the whole `<name>/` directory or nothing. If an agent defines a skill of the same name under its own `agents/<name>/skills/`, the agent's wins; shared skills never overwrite it. Editing a shared skill and running `jack refresh` re-drops it into a running container with no rebuild. An absent `skills/` dir is simply a no-op.
+An [Agent Skill](https://code.claude.com/docs/en/skills) placed in the top-level `skills/` dir is copied into **every** agent's workspace alongside its own config, so a skill authored once is available to all agents without duplicating it into each `agents/<name>/`. A skill is copied as an atomic unit — the whole `<name>/` directory or nothing. If an agent defines a skill of the same name under its own `agents/<name>/skills/`, the agent's wins; shared skills never overwrite it. Editing a shared skill and running `jack refresh` re-drops it into a running container with no rebuild. An absent `skills/` dir is simply a no-op.
+
+Skills land at `/root/workspace/.claude/skills/<name>/`, one level above the repo checkout. Unlike `CLAUDE.md` and `commands/`, Claude Code's project-skill discovery walks up only *to the repository root* — and the checkout is that root — so it would not find skills sitting above it. jack therefore launches `claude` with `--add-dir /root/workspace`, which adds that parent as a skill-discovery root. This also makes an agent's own `agents/<name>/skills/` discoverable, since those land in the same place.
 
 ### Secrets
 
