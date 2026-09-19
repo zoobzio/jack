@@ -87,6 +87,13 @@ func TestInStartsContainerAndCreatesSession(t *testing.T) {
 	if !strings.Contains(cmd, ". /root/.jack/session.env; exec claude") {
 		t.Errorf("launch cmd = %q, want it to source the session env then exec claude", cmd)
 	}
+
+	// claude launches with --add-dir on the workspace parent so it discovers
+	// skills applied at /root/workspace/.claude/skills, which sit above the repo
+	// WORKDIR (the git root) where the project-skill walk would otherwise stop.
+	if !strings.Contains(cmd, "--add-dir /root/workspace") {
+		t.Errorf("launch cmd = %q, want --add-dir /root/workspace so skills above the repo root are discovered", cmd)
+	}
 }
 
 func TestInInjectsAgentSecrets(t *testing.T) {

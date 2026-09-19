@@ -37,7 +37,46 @@ func (e *Env) ApplyAgent(agent domain.Agent) error {
 			return err
 		}
 	}
-	return copyDir(src, dst)
+	if err := copyDir(src, dst); err != nil {
+		return err
+	}
+	return e.applySharedSkills(dst)
+}
+
+// applySharedSkills merges the shared skills tree (<ConfigDir>/skills/) into the
+// agent's workspace skills dir (<dst>/skills/), one skill directory at a time.
+// It runs after the agent's own config is copied, and skips any skill whose
+// destination directory already exists — so an agent-defined skill of the same
+// name wins (decision 1). A skill is an atomic unit: whole directory or nothing,
+// never a per-file merge. An absent shared skills/ dir is a clean no-op.
+func (e *Env) applySharedSkills(dst string) error {
+	shared := e.SkillsDir()
+	entries, err := os.ReadDir(shared)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	skillsDst := filepath.Join(dst, "skills")
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue // a skill is a directory (<name>/SKILL.md); ignore stray files.
+		}
+		d := filepath.Join(skillsDst, entry.Name())
+		if _, err := os.Stat(d); err == nil {
+			continue // agent already defines this skill; theirs wins.
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			return fmt.Errorf("creating shared skill dir %s: %w", d, err)
+		}
+		if err := copyDir(filepath.Join(shared, entry.Name()), d); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // copyDir recursively copies the contents of src into dst. Symlinks are

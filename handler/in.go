@@ -146,6 +146,13 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 	// launch in a still-running container. The existence guard keeps containers
 	// created before the session env mount existed launchable.
 	launch := "claude"
+	// Make the workspace-level .claude a skill-discovery root. Shared and agent
+	// skills are applied under /root/workspace/.claude/skills (see spec.go:54),
+	// which sits one level above the repo WORKDIR — and that WORKDIR is the git
+	// root. claude's project-skill walk stops at the repo root, so without this
+	// those skills are never discovered. --add-dir adds the parent as an extra
+	// root; CLAUDE.md and commands already inherit from there by other means.
+	launch += " --add-dir " + domain.ContainerHome + "/workspace"
 	if flags := profile.Permission.Flags(); flags != "" {
 		launch += " " + flags
 	}
