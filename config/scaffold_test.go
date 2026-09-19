@@ -69,6 +69,7 @@ func TestScaffoldCreatesTree(t *testing.T) {
 	// The directories and files jack later depends on must exist.
 	mustExist(t, env.DataDir)
 	mustExist(t, filepath.Join(env.ConfigDir, "projects"))
+	mustExist(t, env.SkillsDir())
 	mustExist(t, filepath.Join(env.ConfigDir, "agents", "alex"))
 	mustExist(t, env.ConfigPath)
 	mustExist(t, filepath.Join(env.ConfigDir, "agents", "alex", "CLAUDE.md"))

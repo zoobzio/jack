@@ -144,10 +144,14 @@ profiles:
 ~/.config/jack/
 ├── config.yaml               # profiles + optional ca/model/permission
 ├── setup.sh                  # optional: global setup, runs on every fresh container
+├── skills/                   # optional: shared skills, fanned out to every agent
+│   └── <name>/
+│       └── SKILL.md
 ├── agents/
 │   └── <agent>/
 │       ├── CLAUDE.md         # the agent's "soul"
 │       ├── commands/         # slash commands
+│       ├── skills/           # optional: agent-only skills (override shared by name)
 │       └── setup.sh          # optional: per-agent setup
 └── projects/
     └── <repo>/
@@ -157,6 +161,10 @@ profiles:
 The `agents/<agent>/` directory is **copied** into the agent's workspace and bind-mounted read-only one level above the checkout, so Claude Code's directory-inheritance merges the agent's config with any `.claude` in the repo itself.
 
 Setup scripts run in order on each fresh container — **global → agent → project** — and only if the corresponding host file exists. jack deliberately has no opinion about what tools an agent needs; that belongs in `dev.sh`.
+
+#### Shared skills
+
+An [Agent Skill](https://code.claude.com/docs/en/skills) placed in the top-level `skills/` dir is copied into **every** agent's workspace alongside its own config, so a skill authored once is available to all agents without duplicating it into each `agents/<name>/`. Because the workspace config is mounted one level above the checkout, Claude Code discovers these at `.claude/skills/<name>/` through the same directory-inheritance that carries `CLAUDE.md` and `commands/`. A skill is copied as an atomic unit — the whole `<name>/` directory or nothing. If an agent defines a skill of the same name under its own `agents/<name>/skills/`, the agent's wins; shared skills never overwrite it. Editing a shared skill and running `jack refresh` re-drops it into a running container with no rebuild. An absent `skills/` dir is simply a no-op.
 
 ### Secrets
 

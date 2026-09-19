@@ -78,15 +78,17 @@ type ScaffoldResult struct {
 }
 
 // Scaffold lays out the config and data trees jack needs, seeded from sc. It
-// creates ConfigDir with its agents/<agent> and projects children and DataDir,
-// then writes a starter config.yaml and agents/<agent>/CLAUDE.md — but only when
-// those files are absent, so re-running init never clobbers hand-edited config.
+// creates ConfigDir with its agents/<agent>, projects, and (shared) skills
+// children and DataDir, then writes a starter config.yaml and
+// agents/<agent>/CLAUDE.md — but only when those files are absent, so re-running
+// init never clobbers hand-edited config.
 func (e *Env) Scaffold(sc StarterConfig) (ScaffoldResult, error) {
 	agentDir := filepath.Join(e.ConfigDir, "agents", sc.Agent)
 	dirs := []string{
 		e.ConfigDir,
 		agentDir,
 		filepath.Join(e.ConfigDir, "projects"),
+		e.SkillsDir(),
 		e.DataDir,
 	}
 	for _, dir := range dirs {

@@ -41,3 +41,11 @@ func NewEnv() (*Env, error) {
 		RegistryPath: filepath.Join(dataDir, "registry.yaml"),
 	}, nil
 }
+
+// SkillsDir returns the host path of the shared skills directory: skills placed
+// here are fanned out to every agent's workspace .claude/skills by ApplyAgent,
+// so one skill is authored once and reaches all agents. It is agent-independent,
+// unlike ClaudeDir or SecretsPath.
+func (e *Env) SkillsDir() string {
+	return filepath.Join(e.ConfigDir, "skills")
+}
