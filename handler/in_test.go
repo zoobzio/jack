@@ -12,9 +12,99 @@ import (
 	"github.com/zoobzio/jack/domain"
 )
 
+// registerClone records repo as cloned for agent in the env's registry and
+// creates the clone directory on disk — the two facts in requires before it
+// will enter an agent-repo.
+func registerClone(t *testing.T, env *config.Env, agent domain.Agent, repo domain.Repo) {
+	t.Helper()
+	reg, err := config.NewRegistry(env.RegistryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Add(agent, repo, "https://host/u/"+string(repo)+".git")
+	if err := reg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(env.DataDir, string(agent), string(repo)), 0o750); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInRefusesUnregisteredProject(t *testing.T) {
+	claudeHome(t)
+	env := testEnv(t)
+
+	// "jack" was cloned for alex, but "other" was not: in must refuse rather
+	// than build a container around a workspace that does not exist.
+	registerClone(t, env, "alex", "jack")
+	tm := &fakeTmux{HasResult: false}
+	d := &fakeDocker{RunningErr: errors.New("no such container")}
+	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
+
+	err := in(context.Background(), app, "alex", "other", false)
+	if err == nil {
+		t.Fatal("in succeeded for a project that was never cloned")
+	}
+	if !strings.Contains(err.Error(), "not cloned") {
+		t.Errorf("error = %q, want it to say the project is not cloned", err)
+	}
+	if len(d.RunSpecs) != 0 {
+		t.Errorf("Run called %d times for an uncloned project, want 0", len(d.RunSpecs))
+	}
+	if len(tm.CreateCalls) != 0 || len(tm.AttachNames) != 0 {
+		t.Errorf("tmux touched for an uncloned project: create=%v attach=%v", tm.CreateCalls, tm.AttachNames)
+	}
+}
+
+func TestInRefusesUnregisteredAgent(t *testing.T) {
+	claudeHome(t)
+	env := testEnv(t)
+
+	// bob has a profile but nothing cloned; an explicit --agent must not bypass
+	// the registry.
+	registerClone(t, env, "alex", "jack")
+	cfg := profileConfig("alex")
+	cfg.Profiles["bob"] = cfg.Profiles["alex"]
+	d := &fakeDocker{RunningErr: errors.New("no such container")}
+	app := testApp(env, cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
+
+	if err := in(context.Background(), app, "bob", "jack", false); err == nil {
+		t.Fatal("in succeeded for an agent with no clone of the project")
+	}
+	if len(d.RunSpecs) != 0 {
+		t.Errorf("Run called %d times for an uncloned agent-repo, want 0", len(d.RunSpecs))
+	}
+}
+
+func TestInRefusesMissingCloneDir(t *testing.T) {
+	claudeHome(t)
+	env := testEnv(t)
+
+	// Registered, but the clone directory is gone from disk (deleted by hand):
+	// docker would silently bind-mount a fresh empty directory in its place.
+	registerClone(t, env, "alex", "jack")
+	if err := os.RemoveAll(filepath.Join(env.DataDir, "alex", "jack")); err != nil {
+		t.Fatal(err)
+	}
+	d := &fakeDocker{RunningErr: errors.New("no such container")}
+	app := testApp(env, profileConfig("alex"), d, &fakeTmux{HasResult: false}, &fakeGit{})
+
+	err := in(context.Background(), app, "alex", "jack", false)
+	if err == nil {
+		t.Fatal("in succeeded with the clone directory missing")
+	}
+	if !strings.Contains(err.Error(), "missing") {
+		t.Errorf("error = %q, want it to say the clone is missing", err)
+	}
+	if len(d.RunSpecs) != 0 {
+		t.Errorf("Run called %d times with the clone missing, want 0", len(d.RunSpecs))
+	}
+}
+
 func TestInSessionExistsAttaches(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
 
 	tm := &fakeTmux{HasResult: true}
 	d := &fakeDocker{}
@@ -38,6 +128,7 @@ func TestInSessionExistsAttaches(t *testing.T) {
 func TestInStartsContainerAndCreatesSession(t *testing.T) {
 	claudeHome(t)
 	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
 
 	// Session absent and container nonexistent (Running errors for a container
 	// that does not exist).
@@ -99,6 +190,7 @@ func TestInStartsContainerAndCreatesSession(t *testing.T) {
 func TestInInjectsAgentSecrets(t *testing.T) {
 	claudeHome(t)
 	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
 
 	// A secrets file for the agent lands in the container env on fresh start.
 	if err := os.MkdirAll(filepath.Join(env.DataDir, "secrets"), 0o700); err != nil {
@@ -122,6 +214,7 @@ func TestInInjectsAgentSecrets(t *testing.T) {
 func TestInReseedRelinksCredentials(t *testing.T) {
 	home := claudeHome(t)
 	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
 
 	// Session already exists, so in only attaches — but --reseed must still
 	// relink the agent's credentials from the host login first.
@@ -151,6 +244,7 @@ func TestInReseedRelinksCredentials(t *testing.T) {
 func TestInRemovesStoppedContainerBeforeRun(t *testing.T) {
 	claudeHome(t)
 	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
 
 	// Session absent; the container exists but is stopped (e.g. after a host
 	// reboot): Running reports (false, nil). The remnant must be removed before
@@ -177,6 +271,7 @@ func TestInRemovesStoppedContainerBeforeRun(t *testing.T) {
 func TestInStoppedContainerRemovalFails(t *testing.T) {
 	claudeHome(t)
 	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
 
 	// Removing the stopped remnant fails: in must surface the error rather than
 	// attempt a doomed `docker run`.
@@ -200,8 +295,10 @@ func TestInModelResolution(t *testing.T) {
 			Model:    "claude-sonnet-5",
 			Profiles: map[domain.Agent]config.Profile{"alex": {}},
 		}
+		env := testEnv(t)
+		registerClone(t, env, "alex", "jack")
 		d := &fakeDocker{RunningErr: errors.New("no such container")}
-		app := testApp(testEnv(t), cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
+		app := testApp(env, cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
 
 		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
 			t.Fatalf("in returned error: %v", err)
@@ -218,8 +315,10 @@ func TestInModelResolution(t *testing.T) {
 			Model:    "claude-sonnet-5",
 			Profiles: map[domain.Agent]config.Profile{"alex": {Model: "claude-opus-4-8"}},
 		}
+		env := testEnv(t)
+		registerClone(t, env, "alex", "jack")
 		d := &fakeDocker{RunningErr: errors.New("no such container")}
-		app := testApp(testEnv(t), cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
+		app := testApp(env, cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
 
 		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
 			t.Fatalf("in returned error: %v", err)
@@ -238,8 +337,10 @@ func TestInPermissionResolution(t *testing.T) {
 			Permission: config.PermissionBypass,
 			Profiles:   map[domain.Agent]config.Profile{"alex": {}},
 		}
+		env := testEnv(t)
+		registerClone(t, env, "alex", "jack")
 		tm := &fakeTmux{HasResult: false}
-		app := testApp(testEnv(t), cfg, &fakeDocker{RunningErr: errors.New("no such container")}, tm, &fakeGit{})
+		app := testApp(env, cfg, &fakeDocker{RunningErr: errors.New("no such container")}, tm, &fakeGit{})
 
 		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
 			t.Fatalf("in returned error: %v", err)
@@ -259,8 +360,10 @@ func TestInPermissionResolution(t *testing.T) {
 			Permission: config.PermissionBypass,
 			Profiles:   map[domain.Agent]config.Profile{"alex": {Permission: config.PermissionAcceptEdits}},
 		}
+		env := testEnv(t)
+		registerClone(t, env, "alex", "jack")
 		tm := &fakeTmux{HasResult: false}
-		app := testApp(testEnv(t), cfg, &fakeDocker{RunningErr: errors.New("no such container")}, tm, &fakeGit{})
+		app := testApp(env, cfg, &fakeDocker{RunningErr: errors.New("no such container")}, tm, &fakeGit{})
 
 		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
 			t.Fatalf("in returned error: %v", err)

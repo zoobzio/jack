@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -35,9 +36,11 @@ func In(app *core.App) {
 
 // in attaches to a session, creating it (and its container) on demand. An empty
 // agent or project is resolved from the registry, interactively when there is
-// more than one choice. With reseed set, the agent's Claude credentials are
-// relinked from the host login first — the recovery path for a credential copy
-// that drifted from the host's after a token rotation.
+// more than one choice; the pair must name a clone the registry knows and that
+// exists on disk, or in refuses rather than build a container around nothing.
+// With reseed set, the agent's Claude credentials are relinked from the host
+// login first — the recovery path for a credential copy that drifted from the
+// host's after a token rotation.
 func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo, reseed bool) error {
 	reg, err := config.NewRegistry(app.Env().RegistryPath)
 	if err != nil {
@@ -47,6 +50,19 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 	agent, repo, err = resolve(reg, agent, repo)
 	if err != nil {
 		return err
+	}
+
+	// Only enter an agent-repo that jack clone produced. resolve trusts explicit
+	// flags, and docker manufactures an empty directory for a bind mount whose
+	// source is missing — so without this guard a typo'd or never-cloned
+	// project would spin up a container around an empty workspace instead of
+	// failing. The clone must be both registered and present on disk.
+	if reg.Find(agent, repo) == nil {
+		return fmt.Errorf("project %q is not cloned for agent %s — run jack clone first", repo, agent)
+	}
+	dir := filepath.Join(app.Env().DataDir, string(agent), string(repo))
+	if _, serr := os.Stat(dir); serr != nil {
+		return fmt.Errorf("clone of %s for agent %s is missing at %s — run jack clone --force to recreate it", repo, agent, dir)
 	}
 
 	profile, ok := app.Config().Profiles[agent]
