@@ -41,7 +41,7 @@ func TestInRefusesUnregisteredProject(t *testing.T) {
 	d := &fakeDocker{RunningErr: errors.New("no such container")}
 	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
 
-	err := in(context.Background(), app, "alex", "other", false)
+	err := in(context.Background(), app, "alex", "other", false, false)
 	if err == nil {
 		t.Fatal("in succeeded for a project that was never cloned")
 	}
@@ -68,7 +68,7 @@ func TestInRefusesUnregisteredAgent(t *testing.T) {
 	d := &fakeDocker{RunningErr: errors.New("no such container")}
 	app := testApp(env, cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
 
-	if err := in(context.Background(), app, "bob", "jack", false); err == nil {
+	if err := in(context.Background(), app, "bob", "jack", false, false); err == nil {
 		t.Fatal("in succeeded for an agent with no clone of the project")
 	}
 	if len(d.RunSpecs) != 0 {
@@ -89,7 +89,7 @@ func TestInRefusesMissingCloneDir(t *testing.T) {
 	d := &fakeDocker{RunningErr: errors.New("no such container")}
 	app := testApp(env, profileConfig("alex"), d, &fakeTmux{HasResult: false}, &fakeGit{})
 
-	err := in(context.Background(), app, "alex", "jack", false)
+	err := in(context.Background(), app, "alex", "jack", false, false)
 	if err == nil {
 		t.Fatal("in succeeded with the clone directory missing")
 	}
@@ -110,7 +110,7 @@ func TestInSessionExistsAttaches(t *testing.T) {
 	d := &fakeDocker{}
 	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
 
-	if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+	if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 		t.Fatalf("in returned error: %v", err)
 	}
 
@@ -136,7 +136,7 @@ func TestInStartsContainerAndCreatesSession(t *testing.T) {
 	d := &fakeDocker{RunningErr: errors.New("no such container")}
 	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
 
-	if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+	if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 		t.Fatalf("in returned error: %v", err)
 	}
 
@@ -203,7 +203,7 @@ func TestInInjectsAgentSecrets(t *testing.T) {
 	d := &fakeDocker{RunningErr: errors.New("no such container")}
 	app := testApp(env, profileConfig("alex"), d, &fakeTmux{HasResult: false}, &fakeGit{})
 
-	if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+	if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 		t.Fatalf("in returned error: %v", err)
 	}
 	if got := d.RunSpecs[0].Env["GH_TOKEN"]; got != "ghp_alex" {
@@ -221,7 +221,7 @@ func TestInReseedRelinksCredentials(t *testing.T) {
 	tm := &fakeTmux{HasResult: true}
 	app := testApp(env, profileConfig("alex"), &fakeDocker{}, tm, &fakeGit{})
 
-	if err := in(context.Background(), app, "alex", "jack", true); err != nil {
+	if err := in(context.Background(), app, "alex", "jack", true, false); err != nil {
 		t.Fatalf("in returned error: %v", err)
 	}
 
@@ -253,7 +253,7 @@ func TestInRemovesStoppedContainerBeforeRun(t *testing.T) {
 	d := &fakeDocker{RunningResult: false, RunningErr: nil}
 	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
 
-	if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+	if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 		t.Fatalf("in returned error: %v", err)
 	}
 
@@ -279,7 +279,7 @@ func TestInStoppedContainerRemovalFails(t *testing.T) {
 	d := &fakeDocker{RunningResult: false, StopErr: errors.New("permission denied")}
 	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
 
-	if err := in(context.Background(), app, "alex", "jack", false); err == nil {
+	if err := in(context.Background(), app, "alex", "jack", false, false); err == nil {
 		t.Fatal("in succeeded despite failing to remove the stopped container")
 	}
 	if len(d.RunSpecs) != 0 {
@@ -300,7 +300,7 @@ func TestInModelResolution(t *testing.T) {
 		d := &fakeDocker{RunningErr: errors.New("no such container")}
 		app := testApp(env, cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
 
-		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+		if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 			t.Fatalf("in returned error: %v", err)
 		}
 		if got := d.RunSpecs[0].Env["ANTHROPIC_MODEL"]; got != "claude-sonnet-5" {
@@ -320,7 +320,7 @@ func TestInModelResolution(t *testing.T) {
 		d := &fakeDocker{RunningErr: errors.New("no such container")}
 		app := testApp(env, cfg, d, &fakeTmux{HasResult: false}, &fakeGit{})
 
-		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+		if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 			t.Fatalf("in returned error: %v", err)
 		}
 		if got := d.RunSpecs[0].Env["ANTHROPIC_MODEL"]; got != "claude-opus-4-8" {
@@ -342,7 +342,7 @@ func TestInPermissionResolution(t *testing.T) {
 		tm := &fakeTmux{HasResult: false}
 		app := testApp(env, cfg, &fakeDocker{RunningErr: errors.New("no such container")}, tm, &fakeGit{})
 
-		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+		if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 			t.Fatalf("in returned error: %v", err)
 		}
 		if len(tm.CreateCalls) != 1 {
@@ -365,7 +365,7 @@ func TestInPermissionResolution(t *testing.T) {
 		tm := &fakeTmux{HasResult: false}
 		app := testApp(env, cfg, &fakeDocker{RunningErr: errors.New("no such container")}, tm, &fakeGit{})
 
-		if err := in(context.Background(), app, "alex", "jack", false); err != nil {
+		if err := in(context.Background(), app, "alex", "jack", false, false); err != nil {
 			t.Fatalf("in returned error: %v", err)
 		}
 		cmd := tm.CreateCalls[0].Cmd
@@ -376,4 +376,88 @@ func TestInPermissionResolution(t *testing.T) {
 			t.Errorf("launch cmd = %q, should not contain the bypass flag", cmd)
 		}
 	})
+}
+
+func TestInUpdateExistingSessionUpgradesThenAttaches(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
+
+	tm := &fakeTmux{HasResult: true}
+	d := &fakeDocker{}
+	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
+
+	if err := in(context.Background(), app, "alex", "jack", false, true); err != nil {
+		t.Fatalf("in returned error: %v", err)
+	}
+
+	// The session's container is running, so the update execs into it before
+	// the attach; no container is started.
+	if len(d.ExecCalls) != 1 || d.ExecCalls[0].Name != "jack-alex-jack" {
+		t.Fatalf("Exec = %v, want one update call into jack-alex-jack", d.ExecCalls)
+	}
+	if got := strings.Join(d.ExecCalls[0].Cmd, " "); !strings.Contains(got, "@anthropic-ai/claude-code@latest") {
+		t.Errorf("Exec cmd = %q, want it to install @anthropic-ai/claude-code@latest", got)
+	}
+	if len(d.RunSpecs) != 0 {
+		t.Errorf("Run called %d times, want 0 for an existing session", len(d.RunSpecs))
+	}
+	if len(tm.AttachNames) != 1 || tm.AttachNames[0] != "alex-jack" {
+		t.Errorf("Attach = %v, want [alex-jack]", tm.AttachNames)
+	}
+}
+
+func TestInUpdateFreshContainerUpgradesBeforeSession(t *testing.T) {
+	claudeHome(t)
+	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
+
+	tm := &fakeTmux{HasResult: false}
+	d := &fakeDocker{RunningErr: errors.New("no such container")}
+	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
+
+	if err := in(context.Background(), app, "alex", "jack", false, true); err != nil {
+		t.Fatalf("in returned error: %v", err)
+	}
+
+	if len(d.RunSpecs) != 1 {
+		t.Fatalf("Run called %d times, want 1", len(d.RunSpecs))
+	}
+	// No CA and no setup scripts, so the update is the only exec, and it lands
+	// in the container that was just started.
+	if len(d.ExecCalls) != 1 || d.ExecCalls[0].Name != "jack-alex-jack" {
+		t.Fatalf("Exec = %v, want one update call into jack-alex-jack", d.ExecCalls)
+	}
+	if got := strings.Join(d.ExecCalls[0].Cmd, " "); !strings.Contains(got, "@anthropic-ai/claude-code@latest") {
+		t.Errorf("Exec cmd = %q, want it to install @anthropic-ai/claude-code@latest", got)
+	}
+	if len(tm.CreateCalls) != 1 {
+		t.Errorf("Create = %v, want one call", tm.CreateCalls)
+	}
+}
+
+func TestInUpdateFailureLeavesContainerRunning(t *testing.T) {
+	claudeHome(t)
+	env := testEnv(t)
+	registerClone(t, env, "alex", "jack")
+
+	tm := &fakeTmux{HasResult: false}
+	d := &fakeDocker{RunningErr: errors.New("no such container"), ExecErr: errors.New("npm: network unreachable")}
+	app := testApp(env, profileConfig("alex"), d, tm, &fakeGit{})
+
+	err := in(context.Background(), app, "alex", "jack", false, true)
+	if err == nil {
+		t.Fatal("in succeeded despite a failed update")
+	}
+	if !strings.Contains(err.Error(), "updating claude code") {
+		t.Errorf("error = %q, want it to name the update step", err)
+	}
+	// The container still has a working (old) claude, so it is kept for the
+	// next `jack in`; no session is created around the failed attempt.
+	if len(d.StopNames) != 0 {
+		t.Errorf("Stop called after a failed update: %v", d.StopNames)
+	}
+	if len(tm.CreateCalls) != 0 || len(tm.AttachNames) != 0 {
+		t.Errorf("tmux touched after a failed update: create=%v attach=%v", tm.CreateCalls, tm.AttachNames)
+	}
 }

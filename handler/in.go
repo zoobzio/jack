@@ -25,12 +25,14 @@ func In(app *core.App) {
 			agent, _ := cmd.Flags().GetString("agent")
 			project, _ := cmd.Flags().GetString("project")
 			reseed, _ := cmd.Flags().GetBool("reseed")
-			return in(cmd.Context(), app, domain.Agent(agent), domain.Repo(project), reseed)
+			update, _ := cmd.Flags().GetBool("update")
+			return in(cmd.Context(), app, domain.Agent(agent), domain.Repo(project), reseed, update)
 		},
 	}
 	cmd.Flags().StringP("agent", "a", "", "agent name")
 	cmd.Flags().StringP("project", "p", "", "project name")
 	cmd.Flags().Bool("reseed", false, "replace the agent's Claude credentials with a fresh link to the host login")
+	cmd.Flags().BoolP("update", "u", false, "upgrade Claude Code inside the container before entering")
 	app.Root().AddCommand(cmd)
 }
 
@@ -40,8 +42,11 @@ func In(app *core.App) {
 // exists on disk, or in refuses rather than build a container around nothing.
 // With reseed set, the agent's Claude credentials are relinked from the host
 // login first — the recovery path for a credential copy that drifted from the
-// host's after a token rotation.
-func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo, reseed bool) error {
+// host's after a token rotation. With update set, Claude Code is upgraded
+// inside the container once it is up, before the session is created or
+// attached — the base image pins whatever npm served when it was built, so
+// this is how a container catches up without a rebuild.
+func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo, reseed, update bool) error {
 	reg, err := config.NewRegistry(app.Env().RegistryPath)
 	if err != nil {
 		return fmt.Errorf("loading registry: %w", err)
@@ -89,14 +94,21 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 		fmt.Printf("reseeded Claude credentials for agent %s\n", agent)
 	}
 
-	// Attach to the session if it already exists.
+	scr := tools.For(id)
+
+	// Attach to the session if it already exists. Its container is necessarily
+	// running (the session is a docker exec into it), so an update can land
+	// first; it takes effect when claude next launches in that session.
 	if has, herr := app.Tmux().Has(ctx, id.Session); herr != nil {
 		return herr
 	} else if has {
+		if update {
+			if uerr := updateClaude(ctx, app, id, scr); uerr != nil {
+				return uerr
+			}
+		}
 		return app.Tmux().Attach(ctx, id.Session)
 	}
-
-	scr := tools.For(id)
 
 	// Ensure the container is up. Running errors when the container does not
 	// exist (or docker itself is unavailable, which the Run below then reports);
@@ -156,6 +168,15 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 		}
 	}
 
+	// Upgrade before the launch command is built so the new version is what the
+	// session execs. A failed update leaves the container up with its old
+	// version; the next `jack in` finds it running and carries on.
+	if update {
+		if uerr := updateClaude(ctx, app, id, scr); uerr != nil {
+			return uerr
+		}
+	}
+
 	// tmux drives a `docker exec` into the session's workdir, launching claude in
 	// the agent's permission mode. The session env is sourced first — at launch,
 	// not baked into the container — so a `jack refresh` reaches the next claude
@@ -183,4 +204,13 @@ func in(ctx context.Context, app *core.App, agent domain.Agent, repo domain.Repo
 	}
 
 	return app.Tmux().Attach(ctx, id.Session)
+}
+
+// updateClaude upgrades Claude Code inside the identity's running container.
+func updateClaude(ctx context.Context, app *core.App, id *domain.Identity, scr tools.Commands) error {
+	fmt.Println("updating claude code...")
+	if err := app.Docker().Exec(ctx, id.Container, scr.Update()); err != nil {
+		return fmt.Errorf("updating claude code: %w", err)
+	}
+	return nil
 }

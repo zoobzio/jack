@@ -45,6 +45,15 @@ step ca renew --daemon \
 	return []string{"sh", "-c", sh}
 }
 
+// Update returns the command that upgrades Claude Code inside the container to
+// the latest published release. The base image installs it globally via npm at
+// build time and the docker layer cache then freezes that version, so a
+// container can start well behind the current release; this brings it forward
+// in place, taking effect at the next claude launch.
+func (c Commands) Update() []string {
+	return []string{"npm", "install", "-g", "@anthropic-ai/claude-code@latest"}
+}
+
 // Setup returns the ordered setup scripts for the session — global, then agent,
 // then project — sourced from configDir on the host and run from the read-only
 // config mount inside the container. The caller runs each whose HostPath exists.

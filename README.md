@@ -205,7 +205,7 @@ The `claude/` state is what makes agents Claude-deep identities rather than just
 ```
 jack init  [--agent] [--git-name] [--git-email] [--github] [--build]  Scaffold config
 jack clone <url> --agent <name>...   Clone a repo into one or more agents' workspaces
-jack in    [--agent] [--project] [--reseed]  Enter (attach or create) a session
+jack in    [--agent] [--project] [--reseed] [--update]  Enter (attach or create) a session
 jack out   [name | --agent --project]  Terminate a session and stop its container
 jack refresh [--agent]               Sync an agent's config, secrets, and Claude credentials from the host
 jack kill  [--agent] [--project]     Tear down everything for an agent-repo
@@ -246,6 +246,7 @@ jack clone https://github.com/zoobzio/myapp -a alex --force
 jack in --agent alex --project myapp    # explicit
 jack in                                 # pick agent + project interactively
 jack in -a alex -p myapp --reseed       # also relink the agent's Claude credentials from the host
+jack in -a alex -p myapp -u             # upgrade Claude Code in the container first
 ```
 
 `in` starts the container if it isn't running — seeding the agent's private Claude state on first use, then bootstrapping the agent's certificate (when a CA is configured) and running setup scripts — launches `claude` in the agent's permission mode, and attaches you. If the session already exists, it just re-attaches.

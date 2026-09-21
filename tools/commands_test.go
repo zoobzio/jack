@@ -86,3 +86,17 @@ func TestSetup(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdate(t *testing.T) {
+	got := For(mainIdentity(t)).Update()
+
+	want := []string{"npm", "install", "-g", "@anthropic-ai/claude-code@latest"}
+	if len(got) != len(want) {
+		t.Fatalf("Update = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Update[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
